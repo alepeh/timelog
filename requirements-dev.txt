@@ -1,0 +1,27 @@
+# Development dependencies
+# Rationale:
+# - Mirror runtime requirements via `-r requirements.txt`.
+# - Pin compatible ranges to keep tools recent while minimizing breakage.
+# - Include typing, linting, formatting, testing, coverage, security, and optional
+#   dependency management tools.
+# Update cadence:
+# - Review monthly; bump when new minor versions are released and CI is green.
+# - Align formatter (black) version with pre-commit/hooks or editor configs.
+
+-r requirements.txt
+pytest>=8.2,<9
+pytest-django>=4.8,<5
+coverage[toml]>=7.5,<8
+black>=24.4,<25
+isort>=5.13,<6
+flake8>=7.0,<8
+mypy>=1.10,<2
+django-stubs>=5.0,<6
+bandit>=1.7,<2
+pip-audit>=2.7,<3
+# Alternative to pip-audit if preferred:
+# safety>=3,<4
+
+# Optional: dependency compilation/upgrade helpers
+pip-tools>=7.4,<8
+
