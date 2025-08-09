@@ -1,0 +1,17 @@
+# Runtime dependencies
+# Rationale:
+# - Use compatible lower bounds with a conservative upper cap to avoid unexpected
+#   breaking changes from new major/minor releases.
+# - Django: target the current stable minor line; cap to <5.2 to avoid future minor changes.
+# - psycopg[binary]: convenient prebuilt wheels for local/dev. If your repo policy
+#   discourages binary wheels (e.g., in some Linux distros or FIPS/musl builds),
+#   switch to plain `psycopg` (source build) instead — see commented alternative below.
+# Update cadence:
+# - Review and update quarterly or alongside Django minor releases.
+# - Validate in CI before raising caps.
+
+Django>=5.1,<5.2
+psycopg[binary]>=3.1,<4
+# Alternative (if binary wheels are discouraged):
+# psycopg>=3.1,<4
+

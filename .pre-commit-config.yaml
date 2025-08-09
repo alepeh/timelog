@@ -1,0 +1,61 @@
+# pre-commit configuration
+# Install hooks in this repo:
+#   pre-commit install
+# Run all hooks on all files:
+#   pre-commit run --all-files
+
+repos:
+  - repo: https://github.com/psf/black
+    rev: stable
+    hooks:
+      - id: black
+
+  - repo: https://github.com/PyCQA/isort
+    rev: stable
+    hooks:
+      - id: isort
+
+  - repo: https://github.com/PyCQA/flake8
+    rev: stable
+    hooks:
+      - id: flake8
+
+  # Optional: enable mypy static type checking
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: stable
+    hooks:
+      - id: mypy
+        # Include django-stubs for better Django typing support
+        additional_dependencies:
+          - django-stubs
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: stable
+    hooks:
+      - id: bandit
+        # Recursively scan the repository, excluding tests and migrations
+        args: ["-r", ".", "-x", "tests,migrations"]
+
+  - repo: https://github.com/pypa/pip-audit
+    rev: stable
+    hooks:
+      - id: pip-audit
+        # Run manually: pre-commit run pip-audit --all-files
+        stages: [manual]
+
+  # Local hooks
+  - repo: local
+    hooks:
+      - id: detect-migrations
+        name: Detect missing Django migrations
+        entry: python manage.py makemigrations --check --dry-run
+        language: system
+        pass_filenames: false
+
+      - id: coverage-xml
+        name: Generate coverage XML
+        entry: pytest --cov=. --cov-report=xml
+        language: system
+        pass_filenames: false
+        stages: [manual]
+

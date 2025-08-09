@@ -1,0 +1,508 @@
+name: Django Guidelines
+description: A consolidated, discoverable set of Django project commands with CI-parity and safeguards.
+
+inputs:
+  - name: python_bin
+    description: Python binary to use
+    default: python3
+  - name: venv_dir
+    description: Virtualenv directory
+    default: .venv
+  - name: manage_py
+    description: Path to manage.py
+    default: manage.py
+  - name: settings_module
+    description: Django settings module (e.g., project.settings)
+    default: project.settings
+  - name: coverage_threshold
+    description: Minimum acceptable coverage percentage (fail below)
+    default: "90"
+  - name: default_language
+    description: Default i18n language code
+    default: de
+  - name: branch_issue_id
+    description: Issue/Ticket ID for branch naming (required for branching commands)
+    default: ""
+  - name: branch_desc
+    description: Short branch description (used to build slug)
+    default: ""
+  - name: sync_with_origin_main
+    description: When true, sync with origin/main before creating the branch
+    default: "false"
+  - name: pre_commit_install
+    description: When true, run 'pre-commit install' after creating the branch
+    default: "false"
+  - name: app_label
+    description: Django app label (optional)
+    default: ""
+  - name: use_strict_mypy
+    description: Use strict mypy configuration (true/false)
+    default: "false"
+  - name: path_or_module
+    description: Target path or module for single-target mypy run
+    default: ""
+
+commands:
+  - name: Bootstrap: Setup — Virtualenv
+    description: Create and initialize a Python virtual environment, then upgrade pip/setuptools/wheel.
+    tags: [bootstrap]
+    command: |
+      set -Eeuo pipefail
+      echo "[Bootstrap] Creating virtualenv at {{venv_dir}} using {{python_bin}}…"
+      {{python_bin}} -m venv "{{venv_dir}}"
+      echo "[Bootstrap] Upgrading pip, setuptools, wheel…"
+      "{{venv_dir}}/bin/python" -m pip install --upgrade pip setuptools wheel
+      echo "[Hint] Activate with: source {{venv_dir}}/bin/activate"
+
+  - name: Bootstrap: Install — Dev dependencies
+    description: Install project and dev dependencies if requirements files are present; otherwise installs common tooling.
+    tags: [bootstrap]
+    command: |
+      set -Eeuo pipefail
+      echo "[Bootstrap] Installing dependencies…"
+      if [ -f "{{venv_dir}}/bin/python" ]; then . "{{venv_dir}}/bin/activate"; fi
+      if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+      if [ ! -f requirements.txt ] && [ ! -f requirements-dev.txt ]; then
+        echo "[Bootstrap] No requirements files found; installing common dev tools (ruff, black, mypy, pytest, coverage, bandit, pip-audit)…"
+        pip install ruff black mypy pytest coverage bandit pip-audit
+      fi
+      echo "[Hint] Next: run 'Tests: Run — Unit+Integration' or 'Lint: Run — Ruff+Black (check)'"
+
+  - name: Git: Branch — From issue/desc
+    description: Create a git branch from optional issue ID and description (format: feature/ISSUE-desc). Safe if either is empty.
+    tags: [git]
+    command: |
+      set -Eeuo pipefail
+      ISSUE="{{branch_issue_id}}"
+      DESC="{{branch_desc}}"
+      BASE="feature"
+      NAME="$BASE"
+      [ -n "$ISSUE" ] && NAME="$NAME/$ISSUE"
+      [ -n "$DESC" ] && NAME="$NAME-$(echo "$DESC" | tr ' ' '-' | tr -cd '[:alnum:]-')"
+      echo "[Git] Creating branch: $NAME"
+      git --no-pager checkout -b "$NAME"
+      echo "[Hint] Start committing changes, then run 'PR: Quick checklist — Pre-PR' before opening a PR."
+
+  - name: Git: Create feature branch
+    description: Create branch 'feature/<issue-id>-<desc-slug>' with optional sync and pre-commit install.
+    tags: [git]
+    command: |
+      set -Eeuo pipefail
+      ISSUE="{{branch_issue_id}}"
+      DESC="{{branch_desc}}"
+      SYNC="{{sync_with_origin_main}}"
+      PRECOMMIT="{{pre_commit_install}}"
+
+      if [ -z "$ISSUE" ] || [ -z "$DESC" ]; then
+        echo "[Git] Both branch_issue_id and branch_desc are required." >&2
+        exit 1
+      fi
+
+      SLUG=$(echo "$DESC" \
+        | tr '[:upper:]' '[:lower:]' \
+        | tr ' ' '-' \
+        | sed -E 's/[^a-z0-9-]+/-/g; s/^-+//; s/-+$//; s/-{2,}/-/g')
+
+      NAME="feature/${ISSUE}-${SLUG}"
+
+      # Validate against CLAUDE.md convention: feature/<issue-id>-<short-description>
+      if ! echo "$NAME" | grep -Eq '^feature/[0-9]+-[a-z0-9-]+$'; then
+        echo "[Git] Branch name '$NAME' does not match required convention 'feature/<issue-id>-<short-description>' (lowercase, alnum and dashes)." >&2
+        exit 1
+      fi
+
+      if [ "$SYNC" = "true" ]; then
+        echo "[Git] Syncing with origin/main before branching…"
+        git --no-pager fetch origin
+        git --no-pager checkout main
+        git --no-pager pull --ff-only origin main
+      fi
+
+      echo "[Git] Creating branch: $NAME"
+      git --no-pager checkout -b "$NAME"
+
+      if [ "$PRECOMMIT" = "true" ]; then
+        if command -v pre-commit >/dev/null 2>&1; then
+          echo "[Git] Installing pre-commit hooks…"
+          pre-commit install
+        else
+          echo "[Git] pre-commit not found on PATH; skipping install." >&2
+        fi
+      fi
+
+      echo "[Hint] Branch ready: $NAME"
+
+  - name: Git: Create bugfix branch
+    description: Create branch 'bugfix/<issue-id>-<desc-slug>' with optional sync and pre-commit install.
+    tags: [git]
+    command: |
+      set -Eeuo pipefail
+      ISSUE="{{branch_issue_id}}"
+      DESC="{{branch_desc}}"
+      SYNC="{{sync_with_origin_main}}"
+      PRECOMMIT="{{pre_commit_install}}"
+
+      if [ -z "$ISSUE" ] || [ -z "$DESC" ]; then
+        echo "[Git] Both branch_issue_id and branch_desc are required." >&2
+        exit 1
+      fi
+
+      SLUG=$(echo "$DESC" \
+        | tr '[:upper:]' '[:lower:]' \
+        | tr ' ' '-' \
+        | sed -E 's/[^a-z0-9-]+/-/g; s/^-+//; s/-+$//; s/-{2,}/-/g')
+
+      NAME="bugfix/${ISSUE}-${SLUG}"
+
+      # Validate against CLAUDE.md convention: bugfix/<issue-id>-<short-description>
+      if ! echo "$NAME" | grep -Eq '^bugfix/[0-9]+-[a-z0-9-]+$'; then
+        echo "[Git] Branch name '$NAME' does not match required convention 'bugfix/<issue-id>-<short-description>' (lowercase, alnum and dashes)." >&2
+        exit 1
+      fi
+
+      if [ "$SYNC" = "true" ]; then
+        echo "[Git] Syncing with origin/main before branching…"
+        git --no-pager fetch origin
+        git --no-pager checkout main
+        git --no-pager pull --ff-only origin main
+      fi
+
+      echo "[Git] Creating branch: $NAME"
+      git --no-pager checkout -b "$NAME"
+
+      if [ "$PRECOMMIT" = "true" ]; then
+        if command -v pre-commit >/dev/null 2>&1; then
+          echo "[Git] Installing pre-commit hooks…"
+          pre-commit install
+        else
+          echo "[Git] pre-commit not found on PATH; skipping install." >&2
+        fi
+      fi
+
+      echo "[Hint] Branch ready: $NAME"
+
+  - name: Git: Sync — origin main (optional)
+    description: Sync local main with origin/main using fast-forward only.
+    tags: [git]
+    command: |
+      set -Eeuo pipefail
+      echo "[Git] Syncing local main with origin/main (ff-only)…"
+      git --no-pager fetch origin
+      git --no-pager checkout main
+      git --no-pager pull --ff-only origin main
+      echo "[Hint] Now create a branch via 'Git: Create feature branch' or 'Git: Create bugfix branch'."
+
+  - name: Git: Pre-commit — Install (optional)
+    description: Install pre-commit hooks in the repository, if pre-commit is available.
+    tags: [git]
+    command: |
+      set -Eeuo pipefail
+      if command -v pre-commit >/dev/null 2>&1; then
+        echo "[Git] Installing pre-commit hooks…"
+        pre-commit install
+        echo "[Git] pre-commit hooks installed."
+      else
+        echo "[Git] pre-commit not found on PATH. Install it first (e.g., pip install pre-commit)." >&2
+        exit 1
+      fi
+
+  - name: Tests: Run — Unit+Integration
+    description: Run Django tests with the configured settings module. Fails non-zero on test failures.
+    tags: [tests, ci-parity]
+    command: |
+      set -Eeuo pipefail
+      if [ -f "{{venv_dir}}/bin/python" ]; then . "{{venv_dir}}/bin/activate"; fi
+      export DJANGO_SETTINGS_MODULE="{{settings_module}}"
+      echo "[Tests] Running Django test suite via {{manage_py}} with settings=$DJANGO_SETTINGS_MODULE…"
+      "{{python_bin}}" "{{manage_py}}" test --verbosity 2
+      echo "[Hint] Next: run 'Coverage: Report — HTML+Threshold' or 'Lint: Run — Ruff+Black (check)'."
+
+  - name: Coverage: Report — HTML+Threshold
+    description: Run tests under coverage, generate HTML report, and fail if coverage is below the threshold.
+    tags: [coverage, tests, ci-parity]
+    command: |
+      set -Eeuo pipefail
+      if [ -f "{{venv_dir}}/bin/python" ]; then . "{{venv_dir}}/bin/activate"; fi
+      export DJANGO_SETTINGS_MODULE="{{settings_module}}"
+      echo "[Coverage] Running tests with coverage and enforcing threshold {{coverage_threshold}}%…"
+      coverage erase
+      coverage run --source . "{{python_bin}}" "{{manage_py}}" test --verbosity 1
+      coverage html
+      coverage report --fail-under {{coverage_threshold}}
+      echo "[Hint] Open htmlcov/index.html to review detailed coverage."
+
+  - name: Lint: Run — Ruff+Black (check)
+    description: Lint with Ruff and format-check with Black. Fails non-zero on issues to align with CI.
+    tags: [lint, ci-parity]
+    command: |
+      set -Eeuo pipefail
+      if [ -f "{{venv_dir}}/bin/python" ]; then . "{{venv_dir}}/bin/activate"; fi
+      echo "[Lint] Running ruff…"
+      ruff check .
+      echo "[Lint] Running black --check…"
+      black --check .
+      echo "[Hint] To auto-fix, run: ruff check . --fix && black ."
+
+  - name: Typecheck: Run — mypy (configurable strictness)
+    description: Run mypy with standard or strict settings based on use_strict_mypy input.
+    tags: [typecheck, ci-parity]
+    command: |
+      set -Eeuo pipefail
+      if [ -f "{{venv_dir}}/bin/python" ]; then . "{{venv_dir}}/bin/activate"; fi
+      STRICT="{{use_strict_mypy}}"
+      if [ "$STRICT" = "true" ]; then
+        echo "[Typecheck] Running mypy in STRICT mode (mypy.ini)…"
+        mypy --config-file mypy.ini --strict .
+      else
+        echo "[Typecheck] Running mypy in standard mode (mypy.ini)…"
+        mypy --config-file mypy.ini .
+      fi
+      echo "[Hint] Toggle strictness by running with use_strict_mypy=true."
+
+  - name: Types: mypy
+    description: Run mypy using mypy.ini against the repository root.
+    tags: [typecheck, ci-parity]
+    command: |
+      set -Eeuo pipefail
+      if [ -f "{{venv_dir}}/bin/python" ]; then . "{{venv_dir}}/bin/activate"; fi
+      echo "[Types] mypy (standard) using mypy.ini…"
+      mypy --config-file mypy.ini .
+
+  - name: Types: mypy strict
+    description: Run mypy in strict mode using mypy.ini against the repository root.
+    tags: [typecheck, ci-parity]
+    command: |
+      set -Eeuo pipefail
+      if [ -f "{{venv_dir}}/bin/python" ]; then . "{{venv_dir}}/bin/activate"; fi
+      echo "[Types] mypy (STRICT) using mypy.ini…"
+      mypy --config-file mypy.ini --strict .
+
+  - name: Types: mypy single target
+    description: Run mypy for a single path or module using mypy.ini.
+    tags: [typecheck]
+    command: |
+      set -Eeuo pipefail
+      if [ -f "{{venv_dir}}/bin/python" ]; then . "{{venv_dir}}/bin/activate"; fi
+      TARGET="{{path_or_module}}"
+      if [ -z "$TARGET" ]; then
+        echo "[Types] path_or_module input is required (e.g., path/to/file.py or package.module)." 1>&2
+        exit 2
+      fi
+      echo "[Types] mypy target='$TARGET' using mypy.ini…"
+      mypy --config-file mypy.ini "$TARGET"
+
+  - name: DB: Reset — Flush (CONFIRM)
+    description: Flush the database via Django (destructive). Prompts for confirmation before proceeding.
+    tags: [db]
+    command: |
+      set -Eeuo pipefail
+      if [ -f "{{venv_dir}}/bin/python" ]; then . "{{venv_dir}}/bin/activate"; fi
+      export DJANGO_SETTINGS_MODULE="{{settings_module}}"
+      echo "[DB] This will flush the database for settings=$DJANGO_SETTINGS_MODULE (destructive)."
+      read -r -p "Type 'FLUSH' to confirm: " CONF
+      if [ "$CONF" != "FLUSH" ]; then echo "[DB] Aborted."; exit 1; fi
+      "{{python_bin}}" "{{manage_py}}" flush --no-input
+      echo "[Hint] You may want to run 'Migrations: Apply — All' and seed fixtures next."
+
+  - name: Migrations: Make — For app
+    description: Create migrations for the specified app_label (or all apps if empty).
+    tags: [migrations]
+    command: |
+      set -Eeuo pipefail
+      if [ -f "{{venv_dir}}/bin/python" ]; then . "{{venv_dir}}/bin/activate"; fi
+      export DJANGO_SETTINGS_MODULE="{{settings_module}}"
+      if [ -n "{{app_label}}" ]; then
+        echo "[Migrations] Making migrations for app '{{app_label}}'…"
+        "{{python_bin}}" "{{manage_py}}" makemigrations "{{app_label}}"
+      else
+        echo "[Migrations] Making migrations for all apps…"
+        "{{python_bin}}" "{{manage_py}}" makemigrations
+      fi
+      echo "[Hint] Next: run 'Migrations: Apply — All'."
+
+  - name: Migrations: Apply — All
+    description: Apply all pending migrations.
+    tags: [migrations, db, ci-parity]
+    command: |
+      set -Eeuo pipefail
+      if [ -f "{{venv_dir}}/bin/python" ]; then . "{{venv_dir}}/bin/activate"; fi
+      export DJANGO_SETTINGS_MODULE="{{settings_module}}"
+      echo "[Migrations] Applying migrations…"
+      "{{python_bin}}" "{{manage_py}}" migrate --no-input
+      echo "[Hint] Verify app functionality, then run tests."
+
+  - name: Migrations: Squash — For app (CONFIRM)
+    description: Squash migrations for the specified app_label. Destructive to migration history; prompts for confirmation.
+    tags: [migrations]
+    command: |
+      set -Eeuo pipefail
+      if [ -z "{{app_label}}" ]; then echo "[Migrations] app_label is required for squashing."; exit 1; fi
+      if [ -f "{{venv_dir}}/bin/python" ]; then . "{{venv_dir}}/bin/activate"; fi
+      export DJANGO_SETTINGS_MODULE="{{settings_module}}"
+      echo "[Migrations] This will SQUASH migrations for app='{{app_label}}'."
+      read -r -p "Type 'SQUASH {{app_label}}' to confirm: " CONF
+      if [ "$CONF" != "SQUASH {{app_label}}" ]; then echo "[Migrations] Aborted."; exit 1; fi
+      echo "[Migrations] Determining latest migration…"
+      LATEST=$( "{{python_bin}}" "{{manage_py}}" showmigrations "{{app_label}}" | awk '/\[X\]/{last=$NF} END{print last}' )
+      if [ -z "$LATEST" ]; then echo "[Migrations] Could not determine latest migration."; exit 1; fi
+      echo "[Migrations] Squashing up to: $LATEST"
+      "{{python_bin}}" "{{manage_py}}" squashmigrations "{{app_label}}" "$LATEST"
+      echo "[Hint] Review squashed migration, then run 'Migrations: Apply — All' and tests."
+
+  - name: i18n: Make messages — Default language
+    description: Extract and update translation message files for the default language.
+    tags: [i18n]
+    command: |
+      set -Eeuo pipefail
+      if [ -f "{{venv_dir}}/bin/python" ]; then . "{{venv_dir}}/bin/activate"; fi
+      export DJANGO_SETTINGS_MODULE="{{settings_module}}"
+      echo "[i18n] Making messages for language='{{default_language}}'…"
+      "{{python_bin}}" "{{manage_py}}" makemessages -l "{{default_language}}"
+      echo "[Hint] Edit the .po files, then run 'i18n: Compile — Messages'."
+
+  - name: i18n: Compile — Messages
+    description: Compile translation message files to binary format.
+    tags: [i18n, ci-parity]
+    command: |
+      set -Eeuo pipefail
+      if [ -f "{{venv_dir}}/bin/python" ]; then . "{{venv_dir}}/bin/activate"; fi
+      export DJANGO_SETTINGS_MODULE="{{settings_module}}"
+      echo "[i18n] Compiling messages…"
+      "{{python_bin}}" "{{manage_py}}" compilemessages
+      echo "[Hint] Commit updated .po and .mo files."
+
+  - name: Static: Collect — Local
+    description: Collect static files locally.
+    tags: [static, ci-parity]
+    command: |
+      set -Eeuo pipefail
+      if [ -f "{{venv_dir}}/bin/python" ]; then . "{{venv_dir}}/bin/activate"; fi
+      export DJANGO_SETTINGS_MODULE="{{settings_module}}"
+      echo "[Static] Collecting static files…"
+      "{{python_bin}}" "{{manage_py}}" collectstatic --no-input
+      echo "[Hint] Verify static file references in templates."
+
+  - name: Static: Collect — Noinput (explicit settings)
+    description: Collect static files non-interactively using an explicit --settings value.
+    tags: [static, ci-parity]
+    command: |
+      set -Eeuo pipefail
+      if [ -f "{{venv_dir}}/bin/python" ]; then . "{{venv_dir}}/bin/activate"; fi
+      echo "[Static] Running collectstatic --noinput with settings={{settings_module}}…"
+      "{{python_bin}}" "{{manage_py}}" collectstatic --noinput --settings="{{settings_module}}"
+      echo "[Hint] STATIC_ROOT must be configured in the selected settings module for collectstatic to work."
+
+  - name: Static: Check — Static directories
+    description: Warn if project-level 'static/' or app-level 'static/' directories are missing; print expected paths and docs links.
+    tags: [static, docs]
+    command: |
+      set -Eeuo pipefail
+      PROJECT_STATIC_DIR="static"
+      STATUS=0
+      echo "[Static] Checking for project-level './static' directory…"
+      if [ ! -d "$PROJECT_STATIC_DIR" ]; then
+        echo "[Warn] Project static directory '$PROJECT_STATIC_DIR' not found."
+        STATUS=1
+      else
+        echo "[OK] Found project static directory: $PROJECT_STATIC_DIR"
+      fi
+
+      echo "[Static] Searching for app-level 'static/' directories (e.g., myapp/static)…"
+      APP_STATIC_PATHS=$(find . -maxdepth 3 -type d -name static | grep -E '/[^./][^/]*/static$' || true)
+      if [ -z "$APP_STATIC_PATHS" ]; then
+        echo "[Warn] No app-level 'static/' directories found (e.g., myapp/static)."
+        STATUS=1
+      else
+        COUNT=$(echo "$APP_STATIC_PATHS" | wc -l | tr -d ' ')
+        echo "[OK] Found $COUNT app-level 'static/' directory(ies):"
+        echo "$APP_STATIC_PATHS" | sed -e 's/^/  - /'
+      fi
+
+      echo "[Info] Expected paths and conventions:"
+      echo "  - Project static directory: ./static (typically referenced via STATICFILES_DIRS)"
+      echo "  - App static directories: <app>/static/<app>/* (namespaced under the app label)"
+      echo "[Docs] Django static files references:"
+      echo "  - https://docs.djangoproject.com/en/stable/howto/static-files/"
+      echo "  - https://docs.djangoproject.com/en/stable/ref/settings/#std-setting-STATICFILES_DIRS"
+      echo "  - https://docs.djangoproject.com/en/stable/ref/contrib/staticfiles/"
+
+      if [ "$STATUS" -ne 0 ]; then
+        echo "[Result] One or more static directories appear to be missing."
+      else
+        echo "[Result] Static directory layout looks OK."
+      fi
+
+  - name: Docs: Build — Auto-detect
+    description: Build documentation using Sphinx (docs/Makefile) or MkDocs (mkdocs.yml) if present.
+    tags: [docs]
+    command: |
+      set -Eeuo pipefail
+      if [ -f "{{venv_dir}}/bin/python" ]; then . "{{venv_dir}}/bin/activate"; fi
+      if [ -f docs/Makefile ]; then
+        echo "[Docs] Building Sphinx docs…"
+        make -C docs html
+        echo "[Hint] Open docs/_build/html/index.html"
+      elif [ -f mkdocs.yml ]; then
+        echo "[Docs] Building MkDocs site…"
+        mkdocs build
+        echo "[Hint] Open site/index.html"
+      else
+        echo "[Docs] No Sphinx or MkDocs configuration found."; exit 1
+      fi
+
+  - name: Security: Scan — Bandit+pip-audit
+    description: Run Bandit (code security) and pip-audit (dependency vulnerabilities). Fails on findings to align with CI.
+    tags: [security, ci-parity]
+    command: |
+      set -Eeuo pipefail
+      if [ -f "{{venv_dir}}/bin/python" ]; then . "{{venv_dir}}/bin/activate"; fi
+      echo "[Security] Running bandit…"
+      bandit -q -r .
+      echo "[Security] Running pip-audit…"
+      pip-audit
+      echo "[Hint] Address findings or create justifications as appropriate."
+
+  - name: PR: Quick checklist — Pre-PR
+    description: Print a pre-PR checklist aligned with common CLAUDE.md guidelines.
+    tags: [pr]
+    command: |
+      set -Eeuo pipefail
+      cat << 'EOF'
+      Pre-PR Checklist
+      ----------------
+      [ ] Branch is up to date with main (or target branch)
+      [ ] Meaningful title and description (what/why/how), links to issue(s)
+      [ ] Tests added/updated and passing locally: Tests: Run — Unit+Integration
+      [ ] Coverage meets threshold ({{coverage_threshold}}%): Coverage: Report — HTML+Threshold
+      [ ] Lint is clean: Lint: Run — Ruff+Black (check)
+      [ ] Types pass: Typecheck: Run — mypy (configurable strictness)
+      [ ] Migrations created and applied (if models changed): Migrations: Make — For app; Migrations: Apply — All
+      [ ] i18n updated (if strings changed): i18n: Make messages — Default language; i18n: Compile — Messages
+      [ ] Static assets collected locally: Static: Collect — Local
+      [ ] Security scan is clean: Security: Scan — Bandit+pip-audit
+      [ ] Docs updated/builds: Docs: Build — Auto-detect
+      [ ] Changelog/Release notes updated (if applicable)
+      [ ] No secrets or sensitive data committed
+      [ ] Self-review done; screenshots/recordings added when helpful
+      EOF
+      echo "[Hint] Use this as a final pass before creating a PR."
+
+  - name: CI-parity: Run — Full local suite
+    description: Run lint, typecheck, tests with coverage threshold to emulate CI locally.
+    tags: [ci-parity, tests, lint, typecheck, coverage]
+    command: |
+      set -Eeuo pipefail
+      if [ -f "{{venv_dir}}/bin/python" ]; then . "{{venv_dir}}/bin/activate"; fi
+      export DJANGO_SETTINGS_MODULE="{{settings_module}}"
+      echo "[CI] Lint (Ruff+Black check)…"
+      ruff check .
+      black --check .
+      echo "[CI] Typecheck (mypy)…"
+      if [ "{{use_strict_mypy}}" = "true" ]; then mypy --config-file mypy.ini --strict .; else mypy --config-file mypy.ini .; fi
+      echo "[CI] Tests with coverage…"
+      coverage erase
+      coverage run --source . "{{python_bin}}" "{{manage_py}}" test --verbosity 1
+      coverage report --fail-under {{coverage_threshold}}
+      echo "[Hint] If failures occurred, address them and re-run this command."
+
