@@ -1,5 +1,25 @@
 # 🧠 Development Guidelines for Claude – Django Application
 
+## 🔎 Reviewer checklist (Warp + CI parity)
+
+Use this checklist before you request review and when reviewing PRs. It mirrors the CI gates defined in .github/workflows/ci.yml.
+
+- [ ] Lint passes locally (Black, isort, flake8)
+  - black --check .
+  - isort --check-only .
+  - flake8 .
+- [ ] Tests pass locally with coverage ≥ 90%
+  - pytest --cov=. --cov-report=xml --cov-report=term-missing --cov-fail-under=90
+- [ ] Migrations are up to date (if Django manage.py exists)
+  - python manage.py makemigrations --check --dry-run
+- [ ] i18n messages up to date (optional; runs in CI if locale/ exists)
+  - django-admin makemessages -l de and ensure no diff under locale/
+- [ ] Security advisories checked (advisory-only in CI)
+  - pip-audit
+- [ ] Documentation updated where relevant (README, docstrings)
+- [ ] Changelog updated (CHANGELOG.md → Unreleased) if user-facing change
+- [ ] PR links the issue (Closes #<id>) and follows naming conventions
+
 ## 📌 General Workflow
 
 - All tasks are tracked in GitHub Issues.
@@ -46,14 +66,22 @@
 ## Warp Workflows (Django Guidelines)
 
 - Open workflows in Warp:
-  - Place the workflow file under `.warp/workflows` in the repo, then restart Warp or open the Workflows panel and search for "Django Guidelines".
-  - Use the Command Palette (Cmd-P) to find and run workflow commands by name.
-- Setting defaults:
-  - In the workflow UI, set default inputs for your local clone (e.g., `settings_module`, `venv_dir`, `coverage_threshold`).
-- Expected usage:
-  - Before pushing or opening a PR, run: Lint (check-only), Tests with coverage (≥ 90%), `makemigrations --check`, i18n check, optional `collectstatic`, docs/changelog update, and a security scan.
-  - Create branches using the provided branch commands in the workflow.
-  - Use the PR helper to generate a standardized PR with "Closes #<id>".
+  - Put workflow files under .warp/workflows in the repo. Restart Warp or open the Workflows list and search for "Django Guidelines".
+  - Use the Command Palette to run any workflow by name.
+    - macOS: Cmd-P
+    - Linux: Ctrl-P (or use the Palette button in the top bar)
+- Configure defaults once per machine in the workflow UI (e.g., settings_module, venv_dir, coverage_threshold).
+- Recommended pre-push sequence (mirrors CI):
+  - black --check .
+  - isort --check-only .
+  - flake8 .
+  - pytest --cov=. --cov-report=term-missing --cov-fail-under=90
+  - python manage.py makemigrations --check --dry-run (if manage.py exists)
+  - django-admin makemessages -l de (if locale/ exists) and ensure no changes
+  - optional: pip-audit; python manage.py collectstatic --noinput (if applicable)
+- Branch/PR helpers:
+  - Create branches via workflow actions using the naming conventions below.
+  - Use the PR helper to create a PR that includes "Closes #<id>".
 
 ## 🔃 Pull Request Guidelines
 
