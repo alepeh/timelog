@@ -1,11 +1,14 @@
 import hashlib
+import secrets
 
 from django.contrib import messages
 from django.contrib.auth import login
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_http_methods
 
+from .forms import CreateEmployeeForm
 from .models import User
 
 
@@ -88,3 +91,53 @@ def first_login_view(request, token):
         else:
             # TODO: Redirect to employee dashboard when implemented
             return redirect("admin:index")  # Temporary
+
+
+def is_backoffice_user(user):
+    """Check if user is authenticated and has backoffice role."""
+    return (
+        user.is_authenticated and hasattr(user, "is_backoffice") and user.is_backoffice
+    )
+
+
+@login_required
+@user_passes_test(is_backoffice_user)
+@require_http_methods(["GET", "POST"])
+@csrf_protect
+def create_employee_view(request):
+    """
+    Create new employee account (backoffice only).
+    """
+    if request.method == "POST":
+        form = CreateEmployeeForm(request.POST)
+        if form.is_valid():
+            # Create user with generated username
+            user = form.save(commit=False)
+            user.username = form.cleaned_data["email"]  # Use email as username
+            user.is_invited = True
+
+            # Generate first login token
+            token = secrets.token_urlsafe(32)
+            user.first_login_token = hashlib.sha256(token.encode()).hexdigest()
+
+            # Save user without usable password
+            user.set_unusable_password()
+            user.save()
+
+            # Generate first login URL (for now just show the token)
+            first_login_url = request.build_absolute_uri(
+                f"/accounts/first-login/{token}/"
+            )
+
+            messages.success(
+                request,
+                f"Mitarbeiter {user.get_full_name()} wurde erfolgreich angelegt. "
+                f"Erstanmeldung-Link: {first_login_url}",
+            )
+
+            return redirect("accounts:create_employee")
+    else:
+        form = CreateEmployeeForm()
+
+    context = {"form": form, "title": "Neuen Mitarbeiter anlegen"}
+    return render(request, "accounts/create_employee.html", context)
