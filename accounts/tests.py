@@ -1,9 +1,14 @@
 import hashlib
+from datetime import date, time
 
 from django.contrib.auth import get_user_model
 from django.core import mail
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError
 from django.test import Client, TestCase
 from django.urls import reverse
+
+from .models import TimeEntry
 
 User = get_user_model()
 
@@ -45,6 +50,174 @@ class UserModelTest(TestCase):
         user = User.objects.create_user(**self.user_data)
         expected = "Test User (Mitarbeiter)"
         self.assertEqual(str(user), expected)
+
+
+class TimeEntryModelTest(TestCase):
+    """Test the TimeEntry model."""
+
+    def setUp(self):
+        self.employee = User.objects.create_user(
+            username="employee",
+            email="employee@example.com",
+            first_name="Test",
+            last_name="Employee",
+            role="employee",
+        )
+        self.backoffice = User.objects.create_user(
+            username="backoffice",
+            email="backoffice@example.com",
+            first_name="Back",
+            last_name="Office",
+            role="backoffice",
+        )
+
+        self.time_entry_data = {
+            "user": self.employee,
+            "date": date(2024, 1, 15),
+            "start_time": time(9, 0),
+            "end_time": time(17, 0),
+            "lunch_break_minutes": 30,
+            "pollution_level": 2,
+            "notes": "Test entry",
+            "created_by": self.backoffice,
+            "updated_by": self.backoffice,
+        }
+
+    def test_create_time_entry(self):
+        """Test creating a valid time entry."""
+        entry = TimeEntry.objects.create(**self.time_entry_data)
+
+        self.assertEqual(entry.user, self.employee)
+        self.assertEqual(entry.date, date(2024, 1, 15))
+        self.assertEqual(entry.start_time, time(9, 0))
+        self.assertEqual(entry.end_time, time(17, 0))
+        self.assertEqual(entry.lunch_break_minutes, 30)
+        self.assertEqual(entry.pollution_level, 2)
+        self.assertEqual(entry.notes, "Test entry")
+        self.assertEqual(entry.created_by, self.backoffice)
+        self.assertEqual(entry.updated_by, self.backoffice)
+
+    def test_time_entry_string_representation(self):
+        """Test the string representation of TimeEntry."""
+        entry = TimeEntry.objects.create(**self.time_entry_data)
+        expected = "Test Employee - 2024-01-15"
+        self.assertEqual(str(entry), expected)
+
+    def test_unique_constraint_user_date(self):
+        """Test that unique constraint (user, date) is enforced."""
+        TimeEntry.objects.create(**self.time_entry_data)
+
+        # Try to create another entry for same user and date
+        with self.assertRaises(IntegrityError):
+            TimeEntry.objects.create(**self.time_entry_data)
+
+    def test_validation_end_time_after_start_time(self):
+        """Test that end time must be after start time during normal hours."""
+        self.time_entry_data.update(
+            {
+                "start_time": time(10, 0),  # 10 AM
+                "end_time": time(9, 0),     # 9 AM (invalid during normal hours)
+            }
+        )
+
+        entry = TimeEntry(**self.time_entry_data)
+        with self.assertRaises(ValidationError) as cm:
+            entry.clean()
+
+        self.assertIn("end_time", cm.exception.message_dict)
+        self.assertIn(
+            "Endzeit muss nach der Startzeit liegen",
+            cm.exception.message_dict["end_time"][0],
+        )
+
+    def test_validation_negative_lunch_break(self):
+        """Test that lunch break cannot be negative."""
+        self.time_entry_data["lunch_break_minutes"] = -30
+
+        entry = TimeEntry(**self.time_entry_data)
+        with self.assertRaises(ValidationError) as cm:
+            entry.clean()
+
+        self.assertIn("lunch_break_minutes", cm.exception.message_dict)
+
+    def test_validation_future_date(self):
+        """Test that date cannot be in the future."""
+        from django.utils import timezone
+
+        future_date = timezone.now().date()
+        future_date = future_date.replace(year=future_date.year + 1)
+
+        self.time_entry_data["date"] = future_date
+
+        entry = TimeEntry(**self.time_entry_data)
+        with self.assertRaises(ValidationError) as cm:
+            entry.clean()
+
+        self.assertIn("date", cm.exception.message_dict)
+        self.assertIn(
+            "Datum kann nicht in der Zukunft liegen",
+            cm.exception.message_dict["date"][0],
+        )
+
+    def test_total_work_minutes_calculation(self):
+        """Test calculation of total work minutes."""
+        entry = TimeEntry.objects.create(**self.time_entry_data)
+
+        # 9:00 to 17:00 = 480 minutes, minus 30 minutes lunch = 450 minutes
+        expected_minutes = 450
+        self.assertEqual(entry.total_work_minutes, expected_minutes)
+
+    def test_total_work_hours_calculation(self):
+        """Test calculation of total work hours."""
+        entry = TimeEntry.objects.create(**self.time_entry_data)
+
+        # 450 minutes = 7.5 hours
+        expected_hours = 7.5
+        self.assertEqual(entry.total_work_hours, expected_hours)
+
+    def test_overnight_work_calculation(self):
+        """Test work time calculation for overnight shifts."""
+        self.time_entry_data.update(
+            {
+                "start_time": time(22, 0),  # 10 PM
+                "end_time": time(6, 0),  # 6 AM next day
+                "lunch_break_minutes": 60,
+            }
+        )
+        entry = TimeEntry.objects.create(**self.time_entry_data)
+
+        # 22:00 to 06:00 next day = 8 hours = 480 minutes, minus 60 minutes lunch = 420 minutes  # noqa: E501
+        expected_minutes = 420
+        self.assertEqual(entry.total_work_minutes, expected_minutes)
+
+    def test_pollution_level_choices(self):
+        """Test pollution level choices."""
+        # Test all valid pollution levels
+        for level, description in TimeEntry.POLLUTION_CHOICES:
+            self.time_entry_data.update(
+                {
+                    "pollution_level": level,
+                    "date": date(
+                        2024, 1, 15 + level
+                    ),  # Different dates to avoid unique constraint
+                }
+            )
+            entry = TimeEntry.objects.create(**self.time_entry_data)
+            self.assertEqual(entry.pollution_level, level)
+            self.assertEqual(entry.get_pollution_level_display(), description)
+
+    def test_save_calls_clean(self):
+        """Test that save() calls clean() for validation."""
+        self.time_entry_data.update(
+            {
+                "start_time": time(10, 0),  # 10 AM
+                "end_time": time(9, 0),     # 9 AM (invalid during normal hours)
+            }
+        )
+
+        entry = TimeEntry(**self.time_entry_data)
+        with self.assertRaises(ValidationError):
+            entry.save()
 
 
 class FirstLoginViewTest(TestCase):
