@@ -14,12 +14,13 @@ from .models import User
 
 def home_view(request):
     """
-    Simple home page view.
+    Home page view with proper landing page.
     """
-    if request.user.is_authenticated:
-        return redirect("admin:index")
-    else:
-        return redirect("admin:login")
+    context = {
+        "title": "Timelog - Zeiterfassung",
+        "user": request.user,
+    }
+    return render(request, "accounts/home.html", context)
 
 
 @require_http_methods(["GET", "POST"])

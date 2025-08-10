@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 40px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            text-align: center;
+        }
+        .logo {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 1.2em;
+            margin-bottom: 40px;
+        }
+        .user-info {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border-left: 4px solid #007bff;
+        }
+        .welcome-message {
+            font-size: 1.1em;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .user-role {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .actions {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            min-width: 120px;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #0056b3;
+            transform: translateY(-1px);
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background-color: #545b62;
+            transform: translateY(-1px);
+        }
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+        }
+        .btn-success:hover {
+            background-color: #1e7e34;
+            transform: translateY(-1px);
+        }
+        .login-section {
+            background: #f8f9fa;
+            padding: 30px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        .login-title {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .features {
+            margin-top: 40px;
+            text-align: left;
+        }
+        .features h3 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+        .features ul {
+            color: #666;
+            padding-left: 20px;
+        }
+        .features li {
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">⏰ Timelog</div>
+        <div class="subtitle">Moderne Zeiterfassung für Ihr Unternehmen</div>
+        
+        {% if user.is_authenticated %}
+            <div class="user-info">
+                <div class="welcome-message">
+                    Willkommen, <strong>{{ user.get_full_name|default:user.username }}</strong>!
+                </div>
+                <div class="user-role">{{ user.get_role_display }}</div>
+            </div>
+            
+            <div class="actions">
+                {% if user.is_backoffice %}
+                    <a href="{% url 'admin:index' %}" class="btn btn-primary">Admin-Bereich</a>
+                    <a href="{% url 'accounts:create_employee' %}" class="btn btn-success">Mitarbeiter anlegen</a>
+                {% else %}
+                    <a href="{% url 'admin:index' %}" class="btn btn-primary">Dashboard</a>
+                {% endif %}
+                <a href="{% url 'admin:logout' %}" class="btn btn-secondary">Abmelden</a>
+            </div>
+        {% else %}
+            <div class="login-section">
+                <h3 class="login-title">Anmelden</h3>
+                <p>Bitte melden Sie sich an, um auf Ihr Timelog-Konto zuzugreifen.</p>
+                <div class="actions">
+                    <a href="{% url 'admin:login' %}" class="btn btn-primary">Jetzt anmelden</a>
+                </div>
+            </div>
+        {% endif %}
+        
+        <div class="features">
+            <h3>Funktionen</h3>
+            <ul>
+                <li>Einfache und intuitive Zeiterfassung</li>
+                <li>Übersichtliche Berichte und Auswertungen</li>
+                <li>Benutzerfreundliche Verwaltung</li>
+                <li>Sichere Datenspeicherung</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
