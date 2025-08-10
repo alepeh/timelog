@@ -10,8 +10,9 @@
 # - Review and update quarterly or alongside Django minor releases.
 # - Validate in CI before raising caps.
 
-Django>=5.1,<5.2
+Django>=5.2,<5.3
 psycopg[binary]>=3.1,<4
+dj-database-url>=3.0,<4
 # Alternative (if binary wheels are discouraged):
 # psycopg>=3.1,<4
 
