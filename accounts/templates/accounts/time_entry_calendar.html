@@ -13,7 +13,7 @@
             min-height: 100vh;
         }
         .container {
-            max-width: 1400px;
+            max-width: 1200px;
             margin: 0 auto;
             background: white;
             border-radius: 12px;
@@ -51,23 +51,24 @@
         .calendar-nav {
             display: flex;
             align-items: center;
-            gap: 20px;
+            gap: 15px;
         }
         .nav-btn {
             background: #007bff;
             color: white;
             border: none;
-            padding: 10px 15px;
+            padding: 8px 12px;
             border-radius: 6px;
             text-decoration: none;
             font-weight: 500;
             transition: background-color 0.3s ease;
+            font-size: 14px;
         }
         .nav-btn:hover {
             background: #0056b3;
         }
         .calendar-title {
-            font-size: 1.5em;
+            font-size: 1.4em;
             font-weight: 600;
             color: #333;
         }
@@ -107,96 +108,85 @@
             color: #666;
             margin: 5px 0 0 0;
         }
-        .calendar-grid {
+        
+        /* Day rows table */
+        .calendar-table {
             background: white;
             border-radius: 8px;
             overflow: hidden;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
-        .calendar-weekdays {
-            display: grid;
-            grid-template-columns: repeat(7, 1fr);
-            background: #f8f9fa;
+        .day-row {
+            display: flex;
+            align-items: center;
+            padding: 15px 20px;
+            border-bottom: 1px solid #e9ecef;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            min-height: 60px;
         }
-        .weekday-header {
-            padding: 15px 10px;
-            text-align: center;
-            font-weight: 600;
-            color: #495057;
-            border-right: 1px solid #dee2e6;
-        }
-        .weekday-header:last-child {
-            border-right: none;
-        }
-        .calendar-week {
-            display: grid;
-            grid-template-columns: repeat(7, 1fr);
-            border-bottom: 1px solid #dee2e6;
-        }
-        .calendar-week:last-child {
+        .day-row:last-child {
             border-bottom: none;
         }
-        .calendar-day {
-            min-height: 120px;
-            padding: 12px;
-            border-right: 1px solid #dee2e6;
-            position: relative;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            display: flex;
-            flex-direction: column;
-        }
-        .calendar-day:last-child {
-            border-right: none;
-        }
-        .calendar-day:hover {
+        .day-row:hover {
             background-color: #f8f9fa;
-        }
-        .day-number {
-            font-size: 1.1em;
-            font-weight: 600;
-            margin-bottom: 8px;
-        }
-        .day-info {
-            font-size: 0.85em;
-            flex-grow: 1;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
+            transform: translateX(2px);
         }
         
-        /* Day type styling */
-        .calendar-day.weekend {
+        /* Day status styling */
+        .day-row.weekend {
             background-color: #f8f9fa;
             color: #6c757d;
         }
-        .calendar-day.public-holiday {
+        .day-row.public-holiday {
             background-color: #ffe6e6;
             border-left: 4px solid #dc3545;
         }
-        .calendar-day.employee-non-working {
+        .day-row.employee-non-working {
             background-color: #e6f3ff;
             border-left: 4px solid #17a2b8;
         }
-        .calendar-day.has-entry {
+        .day-row.has-entry {
             background-color: #e6f7e6;
             border-left: 4px solid #28a745;
         }
-        .calendar-day.missing-entry {
+        .day-row.missing-entry {
             background-color: #fff3cd;
             border-left: 4px solid #ffc107;
         }
-        .calendar-day.other-month {
-            opacity: 0.3;
+        .day-row.other-month {
+            opacity: 0.4;
             pointer-events: none;
         }
         
+        .day-date {
+            min-width: 120px;
+            font-weight: 600;
+            color: #333;
+        }
+        .day-name {
+            font-size: 0.9em;
+            color: #666;
+            display: block;
+        }
+        .day-number {
+            font-size: 1.2em;
+            display: block;
+        }
+        
+        .day-info {
+            flex: 1;
+            margin-left: 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
         .day-status {
-            font-size: 0.75em;
-            padding: 2px 6px;
-            border-radius: 12px;
-            margin-top: 5px;
-            text-align: center;
+            font-size: 0.9em;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-weight: 500;
         }
         .status-work-hours {
             background: #d4edda;
@@ -214,6 +204,66 @@
             background: #fff3cd;
             color: #856404;
         }
+        .status-weekend {
+            background: #e9ecef;
+            color: #6c757d;
+        }
+        
+        .day-details {
+            font-size: 0.9em;
+            color: #666;
+        }
+        
+        .day-action {
+            min-width: 100px;
+            text-align: right;
+        }
+        .action-btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        .action-btn:hover {
+            background: #0056b3;
+        }
+        .action-btn.edit {
+            background: #28a745;
+        }
+        .action-btn.edit:hover {
+            background: #218838;
+        }
+        
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9em;
+        }
+        .legend-color {
+            width: 20px;
+            height: 15px;
+            border-radius: 3px;
+        }
+        .legend-weekend { background-color: #f8f9fa; border: 1px solid #dee2e6; }
+        .legend-holiday { background-color: #ffe6e6; border-left: 4px solid #dc3545; }
+        .legend-non-working { background-color: #e6f3ff; border-left: 4px solid #17a2b8; }
+        .legend-has-entry { background-color: #e6f7e6; border-left: 4px solid #28a745; }
+        .legend-missing { background-color: #fff3cd; border-left: 4px solid #ffc107; }
         
         .actions {
             margin-top: 30px;
@@ -274,34 +324,7 @@
             border: 1px solid #ffeaa7;
         }
         
-        .legend {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 20px;
-            justify-content: center;
-            margin-bottom: 20px;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 8px;
-        }
-        .legend-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 0.9em;
-        }
-        .legend-color {
-            width: 20px;
-            height: 15px;
-            border-radius: 3px;
-        }
-        .legend-weekend { background-color: #f8f9fa; border: 1px solid #dee2e6; }
-        .legend-holiday { background-color: #ffe6e6; border-left: 4px solid #dc3545; }
-        .legend-non-working { background-color: #e6f3ff; border-left: 4px solid #17a2b8; }
-        .legend-has-entry { background-color: #e6f7e6; border-left: 4px solid #28a745; }
-        .legend-missing { background-color: #fff3cd; border-left: 4px solid #ffc107; }
-        
-        /* Responsive design */
+        /* Mobile responsiveness */
         @media (max-width: 768px) {
             .content {
                 padding: 15px;
@@ -313,19 +336,49 @@
             }
             .calendar-nav {
                 justify-content: center;
+                flex-wrap: wrap;
             }
-            .calendar-day {
-                min-height: 80px;
-                padding: 8px;
+            .day-row {
+                flex-direction: column;
+                align-items: flex-start;
+                padding: 15px;
+                gap: 10px;
             }
-            .day-number {
-                font-size: 1em;
+            .day-date {
+                min-width: auto;
+                width: 100%;
             }
             .day-info {
-                font-size: 0.8em;
+                margin-left: 0;
+                width: 100%;
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+            .day-action {
+                min-width: auto;
+                width: 100%;
+                text-align: left;
             }
             .calendar-stats {
                 grid-template-columns: repeat(2, 1fr);
+            }
+            .legend {
+                flex-direction: column;
+                gap: 10px;
+            }
+            .nav-btn {
+                font-size: 12px;
+                padding: 6px 10px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .calendar-stats {
+                grid-template-columns: 1fr;
+            }
+            .day-row {
+                padding: 12px;
             }
         }
     </style>
@@ -410,45 +463,54 @@
                 </div>
             </div>
 
-            <!-- Calendar Grid -->
-            <div class="calendar-grid">
-                <!-- Weekday Headers -->
-                <div class="calendar-weekdays">
-                    <div class="weekday-header">Mo</div>
-                    <div class="weekday-header">Di</div>
-                    <div class="weekday-header">Mi</div>
-                    <div class="weekday-header">Do</div>
-                    <div class="weekday-header">Fr</div>
-                    <div class="weekday-header">Sa</div>
-                    <div class="weekday-header">So</div>
-                </div>
-
-                <!-- Calendar Weeks -->
-                {% for week in weeks %}
-                    <div class="calendar-week">
-                        {% for day in week %}
-                            <div class="calendar-day {{ day.css_classes|join:' ' }} 
-                                        {% if day.date.month != calendar.month %}other-month{% endif %}"
-                                 title="{{ day.tooltip_text }}"
-                                 onclick="handleDayClick('{{ day.date|date:'Y-m-d' }}', {{ day.has_time_entry|yesno:'true,false' }}, '{{ day.time_entry.id|default:'' }}')">
-                                
-                                <div class="day-number">{{ day.date.day }}</div>
-                                
-                                <div class="day-info">
-                                    {% if day.display_info %}
-                                        {% if day.is_public_holiday %}
-                                            <div class="day-status status-holiday">{{ day.display_info }}</div>
-                                        {% elif day.is_employee_non_working_day %}
-                                            <div class="day-status status-non-working">{{ day.display_info }}</div>
-                                        {% elif day.has_time_entry %}
-                                            <div class="day-status status-work-hours">{{ day.display_info }}</div>
-                                        {% endif %}
-                                    {% elif day.is_missing_entry %}
-                                        <div class="day-status status-missing">Fehlt</div>
-                                    {% endif %}
+            <!-- Calendar Days as Table Rows -->
+            <div class="calendar-table">
+                {% for day in calendar.days %}
+                    <div class="day-row {{ day.css_classes|join:' ' }}"
+                         title="{{ day.tooltip_text }}"
+                         onclick="handleDayClick('{{ day.date|date:'Y-m-d' }}', {{ day.has_time_entry|yesno:'true,false' }}, '{{ day.time_entry.id|default:'' }}')">
+                        
+                        <div class="day-date">
+                            <span class="day-number">{{ day.date.day }}</span>
+                            <span class="day-name">
+                                {% if day.date.weekday == 0 %}Montag{% elif day.date.weekday == 1 %}Dienstag{% elif day.date.weekday == 2 %}Mittwoch{% elif day.date.weekday == 3 %}Donnerstag{% elif day.date.weekday == 4 %}Freitag{% elif day.date.weekday == 5 %}Samstag{% else %}Sonntag{% endif %}
+                            </span>
+                        </div>
+                        
+                        <div class="day-info">
+                            {% if day.is_public_holiday %}
+                                <div class="day-status status-holiday">🎉 {{ day.public_holiday_name }}</div>
+                            {% elif day.is_employee_non_working_day %}
+                                <div class="day-status status-non-working">
+                                    🏠 {% if day.employee_non_working_reason %}{{ day.employee_non_working_reason }}{% else %}Nicht-Arbeitstag{% endif %}
                                 </div>
-                            </div>
-                        {% endfor %}
+                            {% elif day.has_time_entry %}
+                                <div class="day-status status-work-hours">✅ {{ day.time_entry.total_work_hours|floatformat:1 }}h</div>
+                                <div class="day-details">
+                                    {{ day.time_entry.start_time|time:"H:i" }} - {{ day.time_entry.end_time|time:"H:i" }}
+                                    {% if day.time_entry.lunch_break_minutes %} ({{ day.time_entry.lunch_break_minutes }}min Pause){% endif %}
+                                    • {{ day.time_entry.get_pollution_level_display }}
+                                </div>
+                            {% elif day.is_weekend %}
+                                <div class="day-status status-weekend">🏖️ Wochenende</div>
+                            {% elif day.is_missing_entry %}
+                                <div class="day-status status-missing">⚠️ Eintrag fehlt</div>
+                            {% else %}
+                                <div class="day-details">Kein Eintrag</div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="day-action">
+                            {% if day.has_time_entry %}
+                                <button class="action-btn edit" onclick="event.stopPropagation(); window.location.href='/accounts/time-entries/{{ day.time_entry.id }}/edit/';">
+                                    ✏️ Bearbeiten
+                                </button>
+                            {% elif not day.is_weekend and not day.is_public_holiday and not day.is_employee_non_working_day %}
+                                <button class="action-btn" onclick="event.stopPropagation(); window.location.href='/accounts/time-entries/new/{{ day.date|date:'Y-m-d' }}/';">
+                                    ➕ Erstellen
+                                </button>
+                            {% endif %}
+                        </div>
                     </div>
                 {% endfor %}
             </div>
@@ -470,11 +532,6 @@
 
     <script>
         function handleDayClick(dateStr, hasEntry, entryId) {
-            // Don't handle clicks on other month days
-            if (event.target.closest('.other-month')) {
-                return;
-            }
-            
             if (hasEntry && entryId) {
                 // Edit existing entry
                 window.location.href = `/accounts/time-entries/${entryId}/edit/`;
@@ -483,13 +540,6 @@
                 window.location.href = `/accounts/time-entries/new/${dateStr}/`;
             }
         }
-
-        // Add tooltips on hover for better UX
-        document.querySelectorAll('.calendar-day').forEach(function(day) {
-            day.addEventListener('mouseenter', function() {
-                // Could add more sophisticated tooltip handling here
-            });
-        });
     </script>
 </body>
 </html>
