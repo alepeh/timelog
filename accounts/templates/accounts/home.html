@@ -144,7 +144,8 @@
                     <a href="{% url 'admin:index' %}" class="btn btn-primary">Admin-Bereich</a>
                     <a href="{% url 'accounts:create_employee' %}" class="btn btn-success">Mitarbeiter anlegen</a>
                 {% else %}
-                    <a href="{% url 'admin:index' %}" class="btn btn-primary">Dashboard</a>
+                    <a href="{% url 'accounts:time_entry_list' %}" class="btn btn-primary">Meine Zeiteinträge</a>
+                    <a href="{% url 'accounts:time_entry_create' %}" class="btn btn-success">Neuer Zeiteintrag</a>
                 {% endif %}
                 <form method="post" action="{% url 'accounts:logout' %}" class="logout-form">
                     {% csrf_token %}
@@ -164,7 +165,9 @@
         <div class="features">
             <h3>Funktionen</h3>
             <ul>
-                <li>Einfache und intuitive Zeiterfassung</li>
+                <li>Einfache Zeiterfassung mit Start- und Endzeiten</li>
+                <li>Pausenzeiten und Mittagspausen erfassen</li>
+                <li>Verschmutzungsgrade für verschiedene Arbeitsbereiche</li>
                 <li>Übersichtliche Berichte und Auswertungen</li>
                 <li>Benutzerfreundliche Verwaltung</li>
                 <li>Sichere Datenspeicherung</li>

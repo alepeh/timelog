@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - Timelog</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .header {
+            background: #007bff;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 1.5em;
+        }
+        .content {
+            padding: 40px;
+        }
+        .form-group {
+            margin-bottom: 25px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+        }
+        .form-control {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+            box-sizing: border-box;
+        }
+        .form-control:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+        .form-text {
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #0056b3;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background-color: #545b62;
+        }
+        .form-actions {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #dee2e6;
+        }
+        .messages {
+            margin-bottom: 20px;
+        }
+        .alert {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+        }
+        .alert-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .alert-error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .error-messages {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border: 1px solid #f5c6cb;
+        }
+        .error-messages ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .field-errors {
+            color: #dc3545;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .pollution-info {
+            background-color: #e3f2fd;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 10px;
+            border-left: 4px solid #2196f3;
+        }
+        .pollution-info h4 {
+            margin: 0 0 10px 0;
+            color: #1976d2;
+            font-size: 16px;
+        }
+        .pollution-info ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .pollution-info li {
+            margin-bottom: 5px;
+            color: #666;
+        }
+        .work-time-preview {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 20px;
+            border: 1px solid #dee2e6;
+        }
+        .work-time-preview h4 {
+            margin: 0 0 10px 0;
+            color: #333;
+            font-size: 16px;
+        }
+        .preview-calculation {
+            color: #666;
+            font-family: monospace;
+            font-size: 14px;
+        }
+    </style>
+    <script>
+        // Calculate and display work time preview
+        function calculateWorkTime() {
+            const startTime = document.getElementById('id_start_time').value;
+            const endTime = document.getElementById('id_end_time').value;
+            const lunchBreak = parseInt(document.getElementById('id_lunch_break_minutes').value) || 0;
+            
+            if (startTime && endTime) {
+                const start = new Date('2000-01-01 ' + startTime);
+                const end = new Date('2000-01-01 ' + endTime);
+                
+                // Handle overnight shifts
+                if (end <= start) {
+                    end.setDate(end.getDate() + 1);
+                }
+                
+                const diffMs = end - start;
+                const totalMinutes = Math.floor(diffMs / 60000);
+                const workMinutes = Math.max(0, totalMinutes - lunchBreak);
+                const workHours = (workMinutes / 60).toFixed(1);
+                
+                const preview = document.getElementById('work-time-preview');
+                if (preview) {
+                    preview.innerHTML = `
+                        <h4>Arbeitszeit Vorschau:</h4>
+                        <div class="preview-calculation">
+                            ${startTime} bis ${endTime} = ${totalMinutes} Min<br>
+                            - ${lunchBreak} Min Pause<br>
+                            = <strong>${workHours} Stunden</strong>
+                        </div>
+                    `;
+                }
+            }
+        }
+        
+        // Attach event listeners when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            const startTime = document.getElementById('id_start_time');
+            const endTime = document.getElementById('id_end_time');
+            const lunchBreak = document.getElementById('id_lunch_break_minutes');
+            
+            if (startTime) startTime.addEventListener('change', calculateWorkTime);
+            if (endTime) endTime.addEventListener('change', calculateWorkTime);
+            if (lunchBreak) lunchBreak.addEventListener('input', calculateWorkTime);
+            
+            // Initial calculation
+            calculateWorkTime();
+        });
+    </script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⏰ {{ title }}</h1>
+        </div>
+        
+        <div class="content">
+            {% if messages %}
+                <div class="messages">
+                    {% for message in messages %}
+                        <div class="alert alert-{% if message.tags == 'error' %}error{% else %}{{ message.tags }}{% endif %}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            {% if form.non_field_errors %}
+                <div class="error-messages">
+                    <strong>Bitte korrigieren Sie die folgenden Fehler:</strong>
+                    <ul>
+                        {% for error in form.non_field_errors %}
+                            <li>{{ error }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endif %}
+
+            <form method="post">
+                {% csrf_token %}
+                
+                <div class="form-group">
+                    <label for="{{ form.date.id_for_label }}">{{ form.date.label }}</label>
+                    {{ form.date }}
+                    {% if form.date.help_text %}
+                        <div class="form-text">{{ form.date.help_text }}</div>
+                    {% endif %}
+                    {% if form.date.errors %}
+                        <div class="field-errors">
+                            {% for error in form.date.errors %}
+                                {{ error }}<br>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="{{ form.start_time.id_for_label }}">{{ form.start_time.label }}</label>
+                        {{ form.start_time }}
+                        {% if form.start_time.errors %}
+                            <div class="field-errors">
+                                {% for error in form.start_time.errors %}
+                                    {{ error }}<br>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="form-group">
+                        <label for="{{ form.end_time.id_for_label }}">{{ form.end_time.label }}</label>
+                        {{ form.end_time }}
+                        {% if form.end_time.errors %}
+                            <div class="field-errors">
+                                {% for error in form.end_time.errors %}
+                                    {{ error }}<br>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="{{ form.lunch_break_minutes.id_for_label }}">{{ form.lunch_break_minutes.label }}</label>
+                    {{ form.lunch_break_minutes }}
+                    {% if form.lunch_break_minutes.help_text %}
+                        <div class="form-text">{{ form.lunch_break_minutes.help_text }}</div>
+                    {% endif %}
+                    {% if form.lunch_break_minutes.errors %}
+                        <div class="field-errors">
+                            {% for error in form.lunch_break_minutes.errors %}
+                                {{ error }}<br>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div id="work-time-preview" class="work-time-preview">
+                    <!-- Work time calculation will be displayed here -->
+                </div>
+
+                <div class="form-group">
+                    <label for="{{ form.pollution_level.id_for_label }}">{{ form.pollution_level.label }}</label>
+                    {{ form.pollution_level }}
+                    {% if form.pollution_level.help_text %}
+                        <div class="form-text">{{ form.pollution_level.help_text }}</div>
+                    {% endif %}
+                    {% if form.pollution_level.errors %}
+                        <div class="field-errors">
+                            {% for error in form.pollution_level.errors %}
+                                {{ error }}<br>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                    
+                    <div class="pollution-info">
+                        <h4>Verschmutzungsgrad Legende:</h4>
+                        <ul>
+                            <li><strong>1 = Niedrig:</strong> Normale Bürotätigkeit, saubere Arbeitsplätze</li>
+                            <li><strong>2 = Mittel:</strong> Leichte Verschmutzung, gelegentlicher Kontakt mit Schmutz</li>
+                            <li><strong>3 = Hoch:</strong> Starke Verschmutzung, schmutzige Arbeitsumgebung</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="{{ form.notes.id_for_label }}">{{ form.notes.label }}</label>
+                    {{ form.notes }}
+                    {% if form.notes.errors %}
+                        <div class="field-errors">
+                            {% for error in form.notes.errors %}
+                                {{ error }}<br>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">
+                        {{ submit_text|default:"Speichern" }}
+                    </button>
+                    <a href="{% url 'accounts:time_entry_list' %}" class="btn btn-secondary">
+                        Abbrechen
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

@@ -8,8 +8,8 @@ from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_http_methods
 
-from .forms import CreateEmployeeForm
-from .models import User
+from .forms import CreateEmployeeForm, TimeEntryForm
+from .models import TimeEntry, User
 from .permissions import backoffice_required
 
 
@@ -136,3 +136,114 @@ def create_employee_view(request):
 
     context = {"form": form, "title": "Neuen Mitarbeiter anlegen"}
     return render(request, "accounts/create_employee.html", context)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+@csrf_protect
+def time_entry_list(request):
+    """
+    List view for employee's time entries.
+    Shows all time entries for the current user, with basic filtering.
+    """
+    # Get user's time entries, ordered by date (newest first)
+    time_entries = TimeEntry.objects.filter(user=request.user).order_by("-date")
+
+    context = {
+        "time_entries": time_entries,
+        "title": "Meine Zeiteinträge",
+    }
+    return render(request, "accounts/time_entry_list.html", context)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+@csrf_protect
+def time_entry_create(request):
+    """
+    Create view for new time entries.
+    Implements US-C01 (time tracking), US-C02 (lunch breaks), and US-C03
+    (pollution level).
+    """
+    if request.method == "POST":
+        form = TimeEntryForm(request.POST, user=request.user)
+        if form.is_valid():
+            time_entry = form.save(commit=False)
+            time_entry.user = request.user
+            time_entry.created_by = request.user
+            time_entry.updated_by = request.user
+            time_entry.save()
+
+            messages.success(
+                request,
+                f"Zeiteintrag für {time_entry.date} wurde erfolgreich erstellt. "
+                f"Arbeitszeit: {time_entry.total_work_hours:.1f} Stunden.",
+            )
+            return redirect("accounts:time_entry_list")
+    else:
+        form = TimeEntryForm(user=request.user)
+
+    context = {
+        "form": form,
+        "title": "Neuer Zeiteintrag",
+        "submit_text": "Zeiteintrag erstellen",
+    }
+    return render(request, "accounts/time_entry_form.html", context)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+@csrf_protect
+def time_entry_edit(request, entry_id):
+    """
+    Edit view for existing time entries.
+    Only allows users to edit their own time entries.
+    """
+    try:
+        time_entry = TimeEntry.objects.get(pk=entry_id, user=request.user)
+    except TimeEntry.DoesNotExist:
+        messages.error(request, "Zeiteintrag nicht gefunden oder keine Berechtigung.")
+        return redirect("accounts:time_entry_list")
+
+    if request.method == "POST":
+        form = TimeEntryForm(request.POST, instance=time_entry, user=request.user)
+        if form.is_valid():
+            time_entry = form.save(commit=False)
+            time_entry.updated_by = request.user
+            time_entry.save()
+
+            messages.success(
+                request,
+                f"Zeiteintrag für {time_entry.date} wurde erfolgreich aktualisiert. "
+                f"Arbeitszeit: {time_entry.total_work_hours:.1f} Stunden.",
+            )
+            return redirect("accounts:time_entry_list")
+    else:
+        form = TimeEntryForm(instance=time_entry, user=request.user)
+
+    context = {
+        "form": form,
+        "time_entry": time_entry,
+        "title": f"Zeiteintrag bearbeiten - {time_entry.date}",
+        "submit_text": "Änderungen speichern",
+    }
+    return render(request, "accounts/time_entry_form.html", context)
+
+
+@login_required
+@require_http_methods(["POST"])
+@csrf_protect
+def time_entry_delete(request, entry_id):
+    """
+    Delete view for time entries.
+    Only allows users to delete their own time entries.
+    """
+    try:
+        time_entry = TimeEntry.objects.get(pk=entry_id, user=request.user)
+        date = time_entry.date
+        time_entry.delete()
+        messages.success(request, f"Zeiteintrag für {date} wurde erfolgreich gelöscht.")
+    except TimeEntry.DoesNotExist:
+        messages.error(request, "Zeiteintrag nicht gefunden oder keine Berechtigung.")
+
+    return redirect("accounts:time_entry_list")

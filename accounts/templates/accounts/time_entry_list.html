@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - Timelog</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .header {
+            background: #007bff;
+            color: white;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 1.5em;
+        }
+        .user-info {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+        .content {
+            padding: 30px;
+        }
+        .actions {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #0056b3;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background-color: #545b62;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        .btn-danger:hover {
+            background-color: #c82333;
+        }
+        .btn-sm {
+            padding: 5px 10px;
+            font-size: 12px;
+        }
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        .table th,
+        .table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+        }
+        .table tr:hover {
+            background-color: #f8f9fa;
+        }
+        .messages {
+            margin-bottom: 20px;
+        }
+        .alert {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+        }
+        .alert-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .alert-error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+        .empty-state h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+        .pollution-badge {
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+        .pollution-1 {
+            background-color: #d1ecf1;
+            color: #0c5460;
+        }
+        .pollution-2 {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .pollution-3 {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .work-hours {
+            font-weight: 600;
+            color: #007bff;
+        }
+        .nav-links {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #dee2e6;
+            text-align: center;
+        }
+        .nav-links a {
+            color: #007bff;
+            text-decoration: none;
+            margin: 0 10px;
+        }
+        .nav-links a:hover {
+            text-decoration: underline;
+        }
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .summary-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            border-left: 4px solid #007bff;
+        }
+        .summary-card h3 {
+            margin: 0 0 10px 0;
+            font-size: 2em;
+            color: #007bff;
+        }
+        .summary-card p {
+            margin: 0;
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⏰ {{ title }}</h1>
+            <div class="user-info">
+                {{ user.get_full_name|default:user.username }} ({{ user.get_role_display }})
+            </div>
+        </div>
+        
+        <div class="content">
+            {% if messages %}
+                <div class="messages">
+                    {% for message in messages %}
+                        <div class="alert alert-{% if message.tags == 'error' %}error{% else %}{{ message.tags }}{% endif %}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            <div class="actions">
+                <a href="{% url 'accounts:time_entry_create' %}" class="btn btn-primary">
+                    ➕ Neuer Zeiteintrag
+                </a>
+                <a href="{% url 'home' %}" class="btn btn-secondary">
+                    ← Zurück zur Startseite
+                </a>
+            </div>
+
+            {% if time_entries %}
+                <div class="summary-cards">
+                    <div class="summary-card">
+                        <h3>{{ time_entries|length }}</h3>
+                        <p>Einträge gesamt</p>
+                    </div>
+                    <div class="summary-card">
+                        <h3>{{ time_entries|length }}</h3>
+                        <p>Diesen Monat</p>
+                    </div>
+                </div>
+
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Datum</th>
+                            <th>Startzeit</th>
+                            <th>Endzeit</th>
+                            <th>Pause</th>
+                            <th>Arbeitszeit</th>
+                            <th>Verschmutzung</th>
+                            <th>Aktionen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in time_entries %}
+                            <tr>
+                                <td>{{ entry.date|date:"d.m.Y" }}</td>
+                                <td>{{ entry.start_time|time:"H:i" }}</td>
+                                <td>{{ entry.end_time|time:"H:i" }}</td>
+                                <td>{{ entry.lunch_break_minutes }} Min</td>
+                                <td class="work-hours">{{ entry.total_work_hours|floatformat:1 }}h</td>
+                                <td>
+                                    <span class="pollution-badge pollution-{{ entry.pollution_level }}">
+                                        {{ entry.get_pollution_level_display }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <a href="{% url 'accounts:time_entry_edit' entry.id %}" 
+                                       class="btn btn-secondary btn-sm">
+                                        ✏️ Bearbeiten
+                                    </a>
+                                    <form method="post" 
+                                          action="{% url 'accounts:time_entry_delete' entry.id %}" 
+                                          style="display: inline;"
+                                          onsubmit="return confirm('Sind Sie sicher, dass Sie diesen Eintrag löschen möchten?');">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-danger btn-sm">
+                                            🗑️ Löschen
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <div class="empty-state">
+                    <h3>Noch keine Zeiteinträge vorhanden</h3>
+                    <p>Erstellen Sie Ihren ersten Zeiteintrag, um Ihre Arbeitszeit zu dokumentieren.</p>
+                    <div style="margin-top: 20px;">
+                        <a href="{% url 'accounts:time_entry_create' %}" class="btn btn-primary">
+                            ➕ Ersten Zeiteintrag erstellen
+                        </a>
+                    </div>
+                </div>
+            {% endif %}
+
+            <div class="nav-links">
+                <a href="{% url 'home' %}">Startseite</a> |
+                <a href="{% url 'admin:index' %}">Admin</a> |
+                <a href="{% url 'accounts:logout' %}" onclick="document.getElementById('logout-form').submit(); return false;">Abmelden</a>
+                
+                <form id="logout-form" method="post" action="{% url 'accounts:logout' %}" style="display: none;">
+                    {% csrf_token %}
+                </form>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
