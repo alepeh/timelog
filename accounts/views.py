@@ -8,6 +8,7 @@ from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_http_methods
 
+from .calendar_utils import get_current_month_calendar, get_month_calendar
 from .forms import CreateEmployeeForm, TimeEntryForm
 from .models import TimeEntry, User
 from .permissions import backoffice_required
@@ -159,7 +160,7 @@ def time_entry_list(request):
 @login_required
 @require_http_methods(["GET", "POST"])
 @csrf_protect
-def time_entry_create(request):
+def time_entry_create(request, target_date=None):
     """
     Create view for new time entries.
     Implements US-C01 (time tracking), US-C02 (lunch breaks), and US-C03
@@ -190,10 +191,21 @@ def time_entry_create(request):
     else:
         form = TimeEntryForm(user=request.user)
 
+        # Pre-fill date if provided from calendar
+        if target_date:
+            try:
+                from datetime import datetime
+
+                parsed_date = datetime.strptime(target_date, "%Y-%m-%d").date()
+                form.fields["date"].initial = parsed_date
+            except ValueError:
+                pass  # Invalid date format, ignore
+
     context = {
         "form": form,
         "title": "Neuer Zeiteintrag",
         "submit_text": "Zeiteintrag erstellen",
+        "target_date": target_date,
     }
     return render(request, "accounts/time_entry_form.html", context)
 
@@ -261,3 +273,35 @@ def time_entry_delete(request, entry_id):
         messages.error(request, "Zeiteintrag nicht gefunden oder keine Berechtigung.")
 
     return redirect("accounts:time_entry_list")
+
+
+@login_required
+@require_http_methods(["GET"])
+def time_entry_calendar(request):
+    """
+    Calendar view for employee's time entries.
+    Shows monthly overview with color-coded days.
+    Implements US-C07: Monthly Time Entry Overview Calendar.
+    """
+    # Get month/year from query parameters, default to current month
+    try:
+        year = int(request.GET.get("year", ""))
+        month = int(request.GET.get("month", ""))
+        calendar_data = get_month_calendar(year, month, request.user)
+    except (ValueError, TypeError):
+        # Default to current month if parameters are invalid
+        calendar_data = get_current_month_calendar(request.user)
+
+    context = {
+        "calendar": calendar_data,
+        "title": f"Kalender - {calendar_data.title}",
+        "current_year": calendar_data.year,
+        "current_month": calendar_data.month,
+        "prev_year": calendar_data.prev_month[0],
+        "prev_month": calendar_data.prev_month[1],
+        "next_year": calendar_data.next_month[0],
+        "next_month": calendar_data.next_month[1],
+        "stats": calendar_data.stats,
+        "weeks": calendar_data.get_weeks(),
+    }
+    return render(request, "accounts/time_entry_calendar.html", context)
