@@ -3,13 +3,14 @@ import secrets
 
 from django.contrib import messages
 from django.contrib.auth import login
-from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_http_methods
 
 from .forms import CreateEmployeeForm
 from .models import User
+from .permissions import backoffice_required
 
 
 def home_view(request):
@@ -94,15 +95,8 @@ def first_login_view(request, token):
             return redirect("admin:index")  # Temporary
 
 
-def is_backoffice_user(user):
-    """Check if user is authenticated and has backoffice role."""
-    return (
-        user.is_authenticated and hasattr(user, "is_backoffice") and user.is_backoffice
-    )
-
-
 @login_required
-@user_passes_test(is_backoffice_user)
+@backoffice_required
 @require_http_methods(["GET", "POST"])
 @csrf_protect
 def create_employee_view(request):

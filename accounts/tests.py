@@ -678,6 +678,466 @@ class CreateEmployeeViewTest(TestCase):
         self.assertFalse(created_user.is_employee)
 
 
+class RoleBasedPermissionTest(TestCase):
+    """Test role-based permission system as per US-B01."""
+
+    def setUp(self):
+        self.client = Client()
+
+        # Create employee user
+        self.employee = User.objects.create_user(
+            username="employee",
+            email="employee@example.com",
+            first_name="Test",
+            last_name="Employee",
+            password="testpass123",
+            role="employee",
+        )
+
+        # Create another employee for cross-access testing
+        self.other_employee = User.objects.create_user(
+            username="employee2",
+            email="employee2@example.com",
+            first_name="Other",
+            last_name="Employee",
+            password="testpass123",
+            role="employee",
+        )
+
+        # Create backoffice user
+        self.backoffice = User.objects.create_user(
+            username="backoffice",
+            email="backoffice@example.com",
+            first_name="Back",
+            last_name="Office",
+            password="testpass123",
+            role="backoffice",
+        )
+
+        # Create time entries
+        self.employee_entry = TimeEntry.objects.create(
+            user=self.employee,
+            date=date(2024, 1, 15),
+            start_time=time(9, 0),
+            end_time=time(17, 0),
+            lunch_break_minutes=30,
+            pollution_level=1,
+            created_by=self.backoffice,
+            updated_by=self.backoffice,
+        )
+
+        self.other_employee_entry = TimeEntry.objects.create(
+            user=self.other_employee,
+            date=date(2024, 1, 15),
+            start_time=time(8, 0),
+            end_time=time(16, 0),
+            lunch_break_minutes=60,
+            pollution_level=2,
+            created_by=self.backoffice,
+            updated_by=self.backoffice,
+        )
+
+    def test_permission_functions(self):
+        """Test permission checking functions."""
+        from .permissions import (
+            can_access_time_entry,
+            can_create_time_entry_for_user,
+            can_create_users,
+            can_export_time_entries,
+            can_modify_time_entry,
+            can_view_user_list,
+        )
+
+        # Employee permissions
+        self.assertTrue(can_access_time_entry(self.employee, self.employee_entry))
+        self.assertFalse(
+            can_access_time_entry(self.employee, self.other_employee_entry)
+        )
+        self.assertTrue(can_modify_time_entry(self.employee, self.employee_entry))
+        self.assertFalse(
+            can_modify_time_entry(self.employee, self.other_employee_entry)
+        )
+        self.assertTrue(can_create_time_entry_for_user(self.employee, self.employee))
+        self.assertFalse(
+            can_create_time_entry_for_user(self.employee, self.other_employee)
+        )
+        self.assertFalse(can_view_user_list(self.employee))
+        self.assertFalse(can_create_users(self.employee))
+        self.assertFalse(can_export_time_entries(self.employee))
+
+        # Backoffice permissions
+        self.assertTrue(can_access_time_entry(self.backoffice, self.employee_entry))
+        self.assertTrue(
+            can_access_time_entry(self.backoffice, self.other_employee_entry)
+        )
+        self.assertTrue(can_modify_time_entry(self.backoffice, self.employee_entry))
+        self.assertTrue(
+            can_modify_time_entry(self.backoffice, self.other_employee_entry)
+        )
+        self.assertTrue(can_create_time_entry_for_user(self.backoffice, self.employee))
+        self.assertTrue(
+            can_create_time_entry_for_user(self.backoffice, self.other_employee)
+        )
+        self.assertTrue(can_view_user_list(self.backoffice))
+        self.assertTrue(can_create_users(self.backoffice))
+        self.assertTrue(can_export_time_entries(self.backoffice))
+
+    def test_get_accessible_time_entries(self):
+        """Test time entry filtering by role."""
+        from .permissions import get_accessible_time_entries
+
+        # Employee can only see their own entries
+        employee_entries = get_accessible_time_entries(self.employee)
+        self.assertEqual(employee_entries.count(), 1)
+        self.assertEqual(employee_entries.first(), self.employee_entry)
+
+        # Backoffice can see all entries
+        backoffice_entries = get_accessible_time_entries(self.backoffice)
+        self.assertEqual(backoffice_entries.count(), 2)
+        self.assertIn(self.employee_entry, backoffice_entries)
+        self.assertIn(self.other_employee_entry, backoffice_entries)
+
+        # Anonymous user sees nothing
+        from django.contrib.auth.models import AnonymousUser
+
+        anon_entries = get_accessible_time_entries(AnonymousUser())
+        self.assertEqual(anon_entries.count(), 0)
+
+    def test_get_accessible_users(self):
+        """Test user filtering by role."""
+        from .permissions import get_accessible_users
+
+        # Employee can only see themselves
+        employee_users = get_accessible_users(self.employee)
+        self.assertEqual(employee_users.count(), 1)
+        self.assertEqual(employee_users.first(), self.employee)
+
+        # Backoffice can see all users
+        backoffice_users = get_accessible_users(self.backoffice)
+        self.assertGreaterEqual(
+            backoffice_users.count(), 3
+        )  # At least the 3 test users
+        self.assertIn(self.employee, backoffice_users)
+        self.assertIn(self.other_employee, backoffice_users)
+        self.assertIn(self.backoffice, backoffice_users)
+
+    def test_decorators(self):
+        """Test permission decorators."""
+        from django.core.exceptions import PermissionDenied
+        from django.http import HttpRequest
+
+        from .permissions import role_required
+
+        # Mock view function
+        def mock_view(request):
+            return "success"
+
+        # Test role_required decorator
+        backoffice_only_view = role_required("backoffice")(mock_view)
+        employee_only_view = role_required("employee")(mock_view)
+
+        # Create mock requests
+        employee_request = HttpRequest()
+        employee_request.user = self.employee
+
+        backoffice_request = HttpRequest()
+        backoffice_request.user = self.backoffice
+
+        # Employee trying to access backoffice-only view
+        with self.assertRaises(PermissionDenied):
+            backoffice_only_view(employee_request)
+
+        # Backoffice trying to access employee-only view
+        with self.assertRaises(PermissionDenied):
+            employee_only_view(backoffice_request)
+
+        # Correct role access
+        self.assertEqual(backoffice_only_view(backoffice_request), "success")
+        self.assertEqual(employee_only_view(employee_request), "success")
+
+    def test_time_entry_access_decorator(self):
+        """Test time entry access decorators."""
+        from django.core.exceptions import PermissionDenied
+        from django.http import HttpRequest
+
+        from .permissions import require_time_entry_access
+
+        @require_time_entry_access
+        def mock_view(request, time_entry=None, **kwargs):
+            return f"access to entry {time_entry.id}"
+
+        # Employee accessing their own entry
+        employee_request = HttpRequest()
+        employee_request.user = self.employee
+        result = mock_view(employee_request, pk=self.employee_entry.id)
+        self.assertIn(str(self.employee_entry.id), result)
+
+        # Employee trying to access other's entry
+        with self.assertRaises(PermissionDenied):
+            mock_view(employee_request, pk=self.other_employee_entry.id)
+
+        # Backoffice accessing any entry
+        backoffice_request = HttpRequest()
+        backoffice_request.user = self.backoffice
+        result = mock_view(backoffice_request, pk=self.other_employee_entry.id)
+        self.assertIn(str(self.other_employee_entry.id), result)
+
+
+class AdminRoleBasedAccessTest(TestCase):
+    """Test admin interface role-based access control."""
+
+    def setUp(self):
+        self.employee = User.objects.create_user(
+            username="employee",
+            email="employee@example.com",
+            first_name="Test",
+            last_name="Employee",
+            password="testpass123",
+            role="employee",
+        )
+
+        self.other_employee = User.objects.create_user(
+            username="employee2",
+            email="employee2@example.com",
+            first_name="Other",
+            last_name="Employee",
+            password="testpass123",
+            role="employee",
+        )
+
+        self.backoffice = User.objects.create_user(
+            username="backoffice",
+            email="backoffice@example.com",
+            first_name="Back",
+            last_name="Office",
+            password="testpass123",
+            role="backoffice",
+            is_staff=True,
+        )
+
+        # Make backoffice superuser for admin access
+        self.backoffice.is_superuser = True
+        self.backoffice.save()
+
+        # Make employee staff for limited admin access
+        self.employee.is_staff = True
+        self.employee.save()
+
+    def test_user_admin_access_control(self):
+        """Test UserAdmin role-based access."""
+        from django.contrib import admin
+        from django.http import HttpRequest
+
+        from .models import User
+
+        user_admin = admin.site._registry[User]
+
+        # Create mock requests
+        employee_request = HttpRequest()
+        employee_request.user = self.employee
+
+        backoffice_request = HttpRequest()
+        backoffice_request.user = self.backoffice
+
+        # Test view permissions
+        # Employee cannot view user list
+        self.assertFalse(user_admin.has_view_permission(employee_request, None))
+
+        # Employee can view their own profile
+        self.assertTrue(user_admin.has_view_permission(employee_request, self.employee))
+
+        # Employee cannot view other profiles
+        self.assertFalse(
+            user_admin.has_view_permission(employee_request, self.other_employee)
+        )
+
+        # Backoffice can view user list and all profiles
+        self.assertTrue(user_admin.has_view_permission(backoffice_request, None))
+        self.assertTrue(
+            user_admin.has_view_permission(backoffice_request, self.employee)
+        )
+        self.assertTrue(
+            user_admin.has_view_permission(backoffice_request, self.other_employee)
+        )
+
+        # Test add permissions
+        self.assertFalse(user_admin.has_add_permission(employee_request))
+        self.assertTrue(user_admin.has_add_permission(backoffice_request))
+
+        # Test change permissions
+        self.assertTrue(
+            user_admin.has_change_permission(employee_request, self.employee)
+        )
+        self.assertFalse(
+            user_admin.has_change_permission(employee_request, self.other_employee)
+        )
+        self.assertTrue(
+            user_admin.has_change_permission(backoffice_request, self.employee)
+        )
+        self.assertTrue(
+            user_admin.has_change_permission(backoffice_request, self.other_employee)
+        )
+
+        # Test delete permissions
+        self.assertFalse(
+            user_admin.has_delete_permission(employee_request, self.employee)
+        )
+        self.assertTrue(
+            user_admin.has_delete_permission(backoffice_request, self.employee)
+        )
+
+    def test_timeentry_admin_access_control(self):
+        """Test TimeEntryAdmin role-based access."""
+        from django.contrib import admin
+        from django.http import HttpRequest
+
+        from .models import TimeEntry
+
+        # Create test time entries
+        employee_entry = TimeEntry.objects.create(
+            user=self.employee,
+            date=date(2024, 1, 15),
+            start_time=time(9, 0),
+            end_time=time(17, 0),
+            lunch_break_minutes=30,
+            pollution_level=1,
+            created_by=self.backoffice,
+            updated_by=self.backoffice,
+        )
+
+        other_entry = TimeEntry.objects.create(
+            user=self.other_employee,
+            date=date(2024, 1, 15),
+            start_time=time(8, 0),
+            end_time=time(16, 0),
+            lunch_break_minutes=60,
+            pollution_level=2,
+            created_by=self.backoffice,
+            updated_by=self.backoffice,
+        )
+
+        timeentry_admin = admin.site._registry[TimeEntry]
+
+        # Create mock requests
+        employee_request = HttpRequest()
+        employee_request.user = self.employee
+
+        backoffice_request = HttpRequest()
+        backoffice_request.user = self.backoffice
+
+        # Test view permissions
+        self.assertTrue(timeentry_admin.has_view_permission(employee_request, None))
+        self.assertTrue(timeentry_admin.has_view_permission(backoffice_request, None))
+
+        # Test change permissions on specific objects
+        self.assertTrue(
+            timeentry_admin.has_change_permission(employee_request, employee_entry)
+        )
+        self.assertFalse(
+            timeentry_admin.has_change_permission(employee_request, other_entry)
+        )
+        self.assertTrue(
+            timeentry_admin.has_change_permission(backoffice_request, employee_entry)
+        )
+        self.assertTrue(
+            timeentry_admin.has_change_permission(backoffice_request, other_entry)
+        )
+
+        # Test queryset filtering
+        employee_qs = timeentry_admin.get_queryset(employee_request)
+        self.assertEqual(employee_qs.count(), 1)
+        self.assertEqual(employee_qs.first(), employee_entry)
+
+        backoffice_qs = timeentry_admin.get_queryset(backoffice_request)
+        self.assertEqual(backoffice_qs.count(), 2)
+        self.assertIn(employee_entry, backoffice_qs)
+        self.assertIn(other_entry, backoffice_qs)
+
+    def test_admin_action_filtering(self):
+        """Test that admin actions are filtered by role."""
+        from django.contrib import admin
+        from django.http import HttpRequest
+
+        from .models import TimeEntry
+
+        timeentry_admin = admin.site._registry[TimeEntry]
+
+        # Create mock requests
+        employee_request = HttpRequest()
+        employee_request.user = self.employee
+
+        backoffice_request = HttpRequest()
+        backoffice_request.user = self.backoffice
+
+        # Employee should not have export action
+        employee_actions = timeentry_admin.get_actions(employee_request)
+        self.assertNotIn("export_to_csv", employee_actions)
+
+        # Backoffice should have export action
+        backoffice_actions = timeentry_admin.get_actions(backoffice_request)
+        self.assertIn("export_to_csv", backoffice_actions)
+
+
+class ViewRoleBasedAccessTest(TestCase):
+    """Test view-level role-based access control."""
+
+    def setUp(self):
+        self.client = Client()
+
+        self.employee = User.objects.create_user(
+            username="employee",
+            email="employee@example.com",
+            password="testpass123",
+            role="employee",
+        )
+
+        self.backoffice = User.objects.create_user(
+            username="backoffice",
+            email="backoffice@example.com",
+            password="testpass123",
+            role="backoffice",
+        )
+
+    def test_create_employee_view_access(self):
+        """Test that only backoffice can access create employee view."""
+        url = reverse("accounts:create_employee")
+
+        # Anonymous user should be redirected to login
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 302)
+
+        # Employee should be forbidden
+        self.client.login(username="employee", password="testpass123")
+        response = self.client.get(url)
+        self.assertIn(response.status_code, [403, 302])  # Forbidden or redirect
+
+        # Backoffice should have access
+        self.client.login(username="backoffice", password="testpass123")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Neuen Mitarbeiter anlegen")
+
+    def test_home_view_role_based_content(self):
+        """Test that home view shows different content based on role."""
+        url = reverse("home")
+
+        # Employee view
+        self.client.login(username="employee", password="testpass123")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Dashboard")  # Employee sees dashboard link
+        self.assertNotContains(
+            response, "Mitarbeiter anlegen"
+        )  # No create employee link
+
+        # Backoffice view
+        self.client.login(username="backoffice", password="testpass123")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Admin-Bereich")
+        self.assertContains(response, "Mitarbeiter anlegen")  # Has create employee link
+
+
 class AuthenticationFlowsTest(TestCase):
     """Test authentication flows including login, logout, and password reset."""
 
