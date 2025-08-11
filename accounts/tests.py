@@ -9,6 +9,7 @@ from django.db import IntegrityError
 from django.test import Client, TestCase
 from django.urls import reverse
 
+from .forms import TimeEntryForm
 from .models import TimeEntry
 
 User = get_user_model()
@@ -1110,6 +1111,399 @@ class AdminRoleBasedAccessTest(TestCase):
         self.assertIn("export_to_csv", backoffice_actions)
 
 
+class TimeEntryFormTest(TestCase):
+    """Test TimeEntryForm validation and functionality (US-C01, US-C02, US-C03)."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="employee",
+            email="employee@example.com",
+            first_name="Test",
+            last_name="Employee",
+            role="employee",
+        )
+
+        self.valid_data = {
+            "date": date(2024, 1, 15),
+            "start_time": time(9, 0),
+            "end_time": time(17, 0),
+            "lunch_break_minutes": 30,
+            "pollution_level": 1,
+            "notes": "Test entry",
+        }
+
+    def test_valid_form_creation(self):
+        """Test creating a valid time entry form."""
+        form = TimeEntryForm(data=self.valid_data, user=self.user)
+        self.assertTrue(form.is_valid())
+
+        time_entry = form.save(commit=False)
+        time_entry.user = self.user
+        time_entry.created_by = self.user
+        time_entry.updated_by = self.user
+        time_entry.save()
+
+        self.assertEqual(time_entry.date, date(2024, 1, 15))
+        self.assertEqual(time_entry.total_work_hours, 7.5)  # 8 hours - 0.5 hours lunch
+
+    def test_form_validates_end_after_start(self):
+        """Test US-C01 requirement: end time must be after start time."""
+        invalid_data = self.valid_data.copy()
+        invalid_data["start_time"] = time(17, 0)
+        invalid_data["end_time"] = time(9, 0)  # End before start
+
+        form = TimeEntryForm(data=invalid_data, user=self.user)
+        self.assertFalse(form.is_valid())
+        self.assertIn("Die Endzeit muss nach der Startzeit liegen", str(form.errors))
+
+    def test_form_validates_lunch_break_not_exceeding_total_time(self):
+        """Test US-C02 requirement: lunch break cannot exceed total work time."""
+        invalid_data = self.valid_data.copy()
+        invalid_data["start_time"] = time(9, 0)
+        invalid_data["end_time"] = time(10, 0)  # Only 1 hour total
+        invalid_data["lunch_break_minutes"] = 120  # 2 hours lunch break
+
+        form = TimeEntryForm(data=invalid_data, user=self.user)
+        self.assertFalse(form.is_valid())
+        self.assertIn("kann nicht länger sein", str(form.errors))
+
+    def test_form_validates_future_date(self):
+        """Test that date cannot be in the future."""
+        from django.utils import timezone
+
+        invalid_data = self.valid_data.copy()
+        future_date = timezone.now().date()
+        future_date = future_date.replace(year=future_date.year + 1)
+        invalid_data["date"] = future_date
+
+        form = TimeEntryForm(data=invalid_data, user=self.user)
+        self.assertFalse(form.is_valid())
+        self.assertIn("Zukunft", str(form.errors))
+
+    def test_form_validates_unique_date_per_user(self):
+        """Test that each user can only have one entry per date."""
+        # Create first entry
+        TimeEntry.objects.create(
+            user=self.user,
+            date=date(2024, 1, 15),
+            start_time=time(8, 0),
+            end_time=time(16, 0),
+            lunch_break_minutes=60,
+            pollution_level=2,
+            created_by=self.user,
+            updated_by=self.user,
+        )
+
+        # Try to create second entry for same date
+        form = TimeEntryForm(data=self.valid_data, user=self.user)
+        self.assertFalse(form.is_valid())
+        self.assertIn("existiert bereits", str(form.errors))
+
+    def test_form_pollution_level_choices(self):
+        """Test US-C03 requirement: pollution level choices."""
+        for level in [1, 2, 3]:
+            data = self.valid_data.copy()
+            data["pollution_level"] = level
+            data["date"] = date(2024, 1, 15 + level)  # Different dates
+
+            form = TimeEntryForm(data=data, user=self.user)
+            self.assertTrue(form.is_valid(), f"Level {level} should be valid")
+
+        # Test invalid pollution level
+        invalid_data = self.valid_data.copy()
+        invalid_data["pollution_level"] = 4  # Invalid level
+        form = TimeEntryForm(data=invalid_data, user=self.user)
+        self.assertFalse(form.is_valid())
+
+    def test_form_overnight_shift_validation(self):
+        """Test validation for overnight shifts."""
+        overnight_data = self.valid_data.copy()
+        overnight_data["start_time"] = time(22, 0)  # 10 PM
+        overnight_data["end_time"] = time(6, 0)  # 6 AM next day
+        overnight_data["lunch_break_minutes"] = 60
+
+        form = TimeEntryForm(data=overnight_data, user=self.user)
+        self.assertTrue(form.is_valid())
+
+    def test_form_sets_default_date_to_today(self):
+        """Test that form sets default date to today for new entries."""
+        from django.utils import timezone
+
+        form = TimeEntryForm(user=self.user)
+        self.assertEqual(form.fields["date"].initial, timezone.now().date())
+
+
+class TimeEntryViewTest(TestCase):
+    """Test time entry views (US-C01, US-C02, US-C03)."""
+
+    def setUp(self):
+        self.client = Client()
+
+        self.employee = User.objects.create_user(
+            username="employee",
+            email="employee@example.com",
+            first_name="Test",
+            last_name="Employee",
+            password="testpass123",
+            role="employee",
+        )
+
+        self.other_employee = User.objects.create_user(
+            username="employee2",
+            email="employee2@example.com",
+            first_name="Other",
+            last_name="Employee",
+            password="testpass123",
+            role="employee",
+        )
+
+        self.backoffice = User.objects.create_user(
+            username="backoffice",
+            email="backoffice@example.com",
+            first_name="Back",
+            last_name="Office",
+            password="testpass123",
+            role="backoffice",
+        )
+
+        # Create test time entries
+        self.employee_entry = TimeEntry.objects.create(
+            user=self.employee,
+            date=date(2024, 1, 15),
+            start_time=time(9, 0),
+            end_time=time(17, 0),
+            lunch_break_minutes=30,
+            pollution_level=1,
+            notes="Test entry",
+            created_by=self.backoffice,
+            updated_by=self.backoffice,
+        )
+
+    def test_time_entry_list_requires_login(self):
+        """Test that time entry list requires login."""
+        url = reverse("accounts:time_entry_list")
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/accounts/login/", response.url)
+
+    def test_time_entry_list_shows_user_entries(self):
+        """Test that list view only shows user's own entries."""
+        self.client.login(username="employee", password="testpass123")
+        url = reverse("accounts:time_entry_list")
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Meine Zeiteinträge")
+        self.assertContains(response, "15.01.2024")  # German date format
+        self.assertContains(
+            response, "7,5h"
+        )  # Work hours with German decimal separator
+        self.assertContains(response, "Niedrig")  # Pollution level
+
+    def test_time_entry_create_get(self):
+        """Test GET request to time entry create view."""
+        self.client.login(username="employee", password="testpass123")
+        url = reverse("accounts:time_entry_create")
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Neuer Zeiteintrag")
+        self.assertContains(response, "Datum")
+        self.assertContains(response, "Startzeit")
+        self.assertContains(response, "Endzeit")
+        self.assertContains(response, "Mittagspause")
+        self.assertContains(response, "Verschmutzungsgrad")
+        self.assertContains(response, "Arbeitszeit Vorschau")  # JavaScript preview
+
+    def test_time_entry_create_post_success(self):
+        """Test successful time entry creation."""
+        self.client.login(username="employee", password="testpass123")
+        url = reverse("accounts:time_entry_create")
+
+        data = {
+            "date": "2024-02-15",
+            "start_time": "08:00",
+            "end_time": "16:30",
+            "lunch_break_minutes": "45",
+            "pollution_level": "2",
+            "notes": "New test entry",
+        }
+
+        response = self.client.post(url, data)
+
+        # Should redirect to list view
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse("accounts:time_entry_list"))
+
+        # Check entry was created
+        created_entry = TimeEntry.objects.get(
+            user=self.employee, date=date(2024, 2, 15)
+        )
+        self.assertEqual(created_entry.lunch_break_minutes, 45)
+        self.assertEqual(created_entry.pollution_level, 2)
+        self.assertEqual(created_entry.notes, "New test entry")
+        self.assertEqual(created_entry.total_work_hours, 7.75)  # 8.5 - 0.75 hours
+
+    def test_time_entry_create_post_validation_error(self):
+        """Test time entry creation with validation errors."""
+        self.client.login(username="employee", password="testpass123")
+        url = reverse("accounts:time_entry_create")
+
+        # Invalid data: end before start
+        data = {
+            "date": "2024-02-15",
+            "start_time": "17:00",
+            "end_time": "09:00",
+            "lunch_break_minutes": "30",
+            "pollution_level": "1",
+        }
+
+        response = self.client.post(url, data)
+
+        # Should stay on form with errors
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Die Endzeit muss nach der Startzeit liegen")
+
+    def test_time_entry_edit_get(self):
+        """Test GET request to time entry edit view."""
+        self.client.login(username="employee", password="testpass123")
+        url = reverse("accounts:time_entry_edit", args=[self.employee_entry.id])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Zeiteintrag bearbeiten")
+        self.assertContains(response, "2024-01-15")  # Date in title
+        self.assertContains(response, "09:00")  # Pre-filled start time
+        self.assertContains(response, "17:00")  # Pre-filled end time
+        self.assertContains(response, "Test entry")  # Pre-filled notes
+
+    def test_time_entry_edit_post_success(self):
+        """Test successful time entry editing."""
+        self.client.login(username="employee", password="testpass123")
+        url = reverse("accounts:time_entry_edit", args=[self.employee_entry.id])
+
+        data = {
+            "date": "2024-01-15",  # Keep same date
+            "start_time": "08:30",  # Changed
+            "end_time": "16:30",  # Changed
+            "lunch_break_minutes": "60",  # Changed
+            "pollution_level": "3",  # Changed
+            "notes": "Updated test entry",  # Changed
+        }
+
+        response = self.client.post(url, data)
+
+        # Should redirect to list view
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse("accounts:time_entry_list"))
+
+        # Check entry was updated
+        self.employee_entry.refresh_from_db()
+        self.assertEqual(self.employee_entry.start_time, time(8, 30))
+        self.assertEqual(self.employee_entry.end_time, time(16, 30))
+        self.assertEqual(self.employee_entry.lunch_break_minutes, 60)
+        self.assertEqual(self.employee_entry.pollution_level, 3)
+        self.assertEqual(self.employee_entry.notes, "Updated test entry")
+        self.assertEqual(self.employee_entry.updated_by, self.employee)
+
+    def test_time_entry_edit_other_user_entry_forbidden(self):
+        """Test that user cannot edit other user's entries."""
+        # Create entry for other employee
+        other_entry = TimeEntry.objects.create(
+            user=self.other_employee,
+            date=date(2024, 1, 16),
+            start_time=time(9, 0),
+            end_time=time(17, 0),
+            lunch_break_minutes=30,
+            pollution_level=1,
+            created_by=self.backoffice,
+            updated_by=self.backoffice,
+        )
+
+        self.client.login(username="employee", password="testpass123")
+        url = reverse("accounts:time_entry_edit", args=[other_entry.id])
+        response = self.client.get(url)
+
+        # Should redirect with error message
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse("accounts:time_entry_list"))
+
+    def test_time_entry_delete_success(self):
+        """Test successful time entry deletion."""
+        self.client.login(username="employee", password="testpass123")
+        url = reverse("accounts:time_entry_delete", args=[self.employee_entry.id])
+
+        response = self.client.post(url)
+
+        # Should redirect to list view
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse("accounts:time_entry_list"))
+
+        # Check entry was deleted
+        with self.assertRaises(TimeEntry.DoesNotExist):
+            TimeEntry.objects.get(id=self.employee_entry.id)
+
+    def test_time_entry_delete_other_user_entry_forbidden(self):
+        """Test that user cannot delete other user's entries."""
+        other_entry = TimeEntry.objects.create(
+            user=self.other_employee,
+            date=date(2024, 1, 16),
+            start_time=time(9, 0),
+            end_time=time(17, 0),
+            lunch_break_minutes=30,
+            pollution_level=1,
+            created_by=self.backoffice,
+            updated_by=self.backoffice,
+        )
+
+        self.client.login(username="employee", password="testpass123")
+        url = reverse("accounts:time_entry_delete", args=[other_entry.id])
+
+        response = self.client.post(url)
+
+        # Should redirect with error message
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse("accounts:time_entry_list"))
+
+        # Entry should still exist
+        self.assertTrue(TimeEntry.objects.filter(id=other_entry.id).exists())
+
+    def test_time_entry_list_empty_state(self):
+        """Test time entry list shows empty state when no entries exist."""
+        # Delete the existing entry
+        self.employee_entry.delete()
+
+        self.client.login(username="employee", password="testpass123")
+        url = reverse("accounts:time_entry_list")
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Noch keine Zeiteinträge vorhanden")
+        self.assertContains(response, "Ersten Zeiteintrag erstellen")
+
+    def test_time_entry_views_calculate_work_hours_correctly(self):
+        """Test that views display correct work hour calculations."""
+        # Create entry with specific times for calculation test
+        TimeEntry.objects.create(
+            user=self.employee,
+            date=date(2024, 1, 20),
+            start_time=time(8, 15),  # 8:15 AM
+            end_time=time(17, 45),  # 5:45 PM = 9.5 hours total
+            lunch_break_minutes=75,  # 1.25 hours lunch
+            pollution_level=2,
+            created_by=self.employee,
+            updated_by=self.employee,
+        )
+
+        self.client.login(username="employee", password="testpass123")
+        url = reverse("accounts:time_entry_list")
+        response = self.client.get(url)
+
+        # Should show 8.25 hours (9.5 - 1.25) with German decimal separator
+        self.assertContains(response, "8,3h")
+
+
 class ViewRoleBasedAccessTest(TestCase):
     """Test view-level role-based access control."""
 
@@ -1157,7 +1551,12 @@ class ViewRoleBasedAccessTest(TestCase):
         self.client.login(username="employee", password="testpass123")
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Dashboard")  # Employee sees dashboard link
+        self.assertContains(
+            response, "Meine Zeiteinträge"
+        )  # Employee sees time entry link
+        self.assertContains(
+            response, "Neuer Zeiteintrag"
+        )  # Employee can create time entries
         self.assertNotContains(
             response, "Mitarbeiter anlegen"
         )  # No create employee link
@@ -1540,7 +1939,8 @@ class HomeViewAuthenticationTest(TestCase):
         self.assertContains(response, "Willkommen")
         self.assertContains(response, "Test Employee")
         self.assertContains(response, "Mitarbeiter")
-        self.assertContains(response, "Dashboard")
+        self.assertContains(response, "Meine Zeiteinträge")
+        self.assertContains(response, "Neuer Zeiteintrag")
         self.assertContains(response, "Abmelden")
 
     def test_home_view_authenticated_backoffice(self):
