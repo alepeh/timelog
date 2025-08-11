@@ -77,8 +77,8 @@ def first_login_view(request, token):
         user.first_login_token = None
         user.save()
 
-        # Log user in
-        login(request, user)
+        # Log user in (specify backend due to django-axes)
+        login(request, user, backend="django.contrib.auth.backends.ModelBackend")
 
         messages.success(
             request,

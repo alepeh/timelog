@@ -21,12 +21,13 @@ class DatabaseConfigurationTest(TestCase):
         """Test that SQLite is used when DATABASE_URL is not set (development)."""
         from django.conf import settings
         from django.db import connection
-        
+
         # If DATABASE_URL is not set, should use SQLite
         if not os.environ.get("DATABASE_URL"):
             self.assertEqual(
-                connection.vendor, "sqlite", 
-                "Should use SQLite for development when DATABASE_URL is not set"
+                connection.vendor,
+                "sqlite",
+                "Should use SQLite for development when DATABASE_URL is not set",
             )
             self.assertIn("sqlite3", settings.DATABASES["default"]["ENGINE"])
 
@@ -34,30 +35,27 @@ class DatabaseConfigurationTest(TestCase):
         """Test that PostgreSQL is used when DATABASE_URL is set (production)."""
         from django.conf import settings
         from django.db import connection
-        
+
         # If DATABASE_URL is set, should use PostgreSQL
         if os.environ.get("DATABASE_URL"):
             self.assertEqual(
-                connection.vendor, "postgresql",
-                "Should use PostgreSQL when DATABASE_URL is set"
+                connection.vendor,
+                "postgresql",
+                "Should use PostgreSQL when DATABASE_URL is set",
             )
             self.assertIn("postgresql", settings.DATABASES["default"]["ENGINE"])
 
     def test_migrations_work_on_current_database(self):
         """Test that migrations work on the current database engine."""
-        from django.core.management import call_command
         from django.db import connection
-        
+
         # This test verifies that our models can be migrated on the current DB
         # This is run in CI with SQLite and can be run manually with PostgreSQL
-        
         # Verify we can create and query our models
         user = User.objects.create_user(
-            username="test_db_user",
-            email="test@example.com",
-            role="employee"
+            username="test_db_user", email="test@example.com", role="employee"
         )
-        
+
         time_entry = TimeEntry.objects.create(
             user=user,
             date=date(2024, 1, 15),
@@ -68,11 +66,11 @@ class DatabaseConfigurationTest(TestCase):
             created_by=user,
             updated_by=user,
         )
-        
+
         # Verify we can query the data
         self.assertEqual(TimeEntry.objects.filter(user=user).count(), 1)
         self.assertEqual(time_entry.total_work_minutes, 450)  # 8h - 30min lunch
-        
+
         # Log the database engine being used for visibility in test output
         print(f"Database engine: {connection.vendor}")
 
@@ -180,7 +178,7 @@ class TimeEntryModelTest(TestCase):
         self.time_entry_data.update(
             {
                 "start_time": time(10, 0),  # 10 AM
-                "end_time": time(9, 0),     # 9 AM (invalid during normal hours)
+                "end_time": time(9, 0),  # 9 AM (invalid during normal hours)
             }
         )
 
@@ -275,7 +273,7 @@ class TimeEntryModelTest(TestCase):
         self.time_entry_data.update(
             {
                 "start_time": time(10, 0),  # 10 AM
-                "end_time": time(9, 0),     # 9 AM (invalid during normal hours)
+                "end_time": time(9, 0),  # 9 AM (invalid during normal hours)
             }
         )
 
@@ -404,7 +402,7 @@ class AdminInterfaceTest(TestCase):
     def test_admin_timeentry_list(self):
         """Test that time entries are displayed in admin."""
         # Create a time entry first
-        time_entry = TimeEntry.objects.create(
+        TimeEntry.objects.create(
             user=self.employee_user,
             date=date(2024, 1, 15),
             start_time=time(9, 0),
@@ -430,10 +428,10 @@ class AdminInterfaceTest(TestCase):
         url = reverse("admin:accounts_timeentry_changelist")
         response = self.client.get(url)
 
-        # Check for filter options based on list_filter configuration  
+        # Check for filter options based on list_filter configuration
         self.assertContains(response, "pollution_level")
         self.assertContains(response, "date")
-        
+
     def test_admin_timeentry_search_functionality(self):
         """Test search functionality for time entries."""
         # Create a time entry
@@ -479,7 +477,7 @@ class AdminInterfaceTest(TestCase):
         )
 
         url = reverse("admin:accounts_timeentry_changelist")
-        
+
         # Test that export action is available
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
@@ -488,21 +486,22 @@ class AdminInterfaceTest(TestCase):
     def test_admin_models_registered(self):
         """Test that all required models are registered in admin."""
         from django.contrib import admin
-        from .models import User, TimeEntry
+
+        from .models import TimeEntry, User
 
         # Check that models are registered
         self.assertIn(User, admin.site._registry)
         self.assertIn(TimeEntry, admin.site._registry)
-        
+
         # Check admin classes are properly configured
         user_admin = admin.site._registry[User]
         timeentry_admin = admin.site._registry[TimeEntry]
-        
+
         # Verify key configurations exist
-        self.assertTrue(hasattr(user_admin, 'list_display'))
-        self.assertTrue(hasattr(user_admin, 'list_filter'))
-        self.assertTrue(hasattr(timeentry_admin, 'list_display'))
-        self.assertTrue(hasattr(timeentry_admin, 'list_filter'))
+        self.assertTrue(hasattr(user_admin, "list_display"))
+        self.assertTrue(hasattr(user_admin, "list_filter"))
+        self.assertTrue(hasattr(timeentry_admin, "list_display"))
+        self.assertTrue(hasattr(timeentry_admin, "list_filter"))
 
 
 class EmailInvitationTest(TestCase):
@@ -677,3 +676,399 @@ class CreateEmployeeViewTest(TestCase):
         self.assertEqual(created_user.role, "backoffice")
         self.assertTrue(created_user.is_backoffice)
         self.assertFalse(created_user.is_employee)
+
+
+class AuthenticationFlowsTest(TestCase):
+    """Test authentication flows including login, logout, and password reset."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user_data = {
+            "username": "testuser",
+            "email": "test@example.com",
+            "first_name": "Test",
+            "last_name": "User",
+            "password": "testpass123",
+            "role": "employee",
+        }
+        self.user = User.objects.create_user(**self.user_data)
+
+    def test_login_view_get(self):
+        """Test GET request to login view shows login form."""
+        url = reverse("accounts:login")
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Anmelden")
+        self.assertContains(response, "Benutzername")
+        self.assertContains(response, "Passwort")
+        self.assertContains(response, "⏰ Timelog")
+
+    def test_login_success(self):
+        """Test successful login redirects to home page."""
+        url = reverse("accounts:login")
+        data = {"username": "testuser", "password": "testpass123"}
+        response = self.client.post(url, data, follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.wsgi_request.user.is_authenticated)
+        self.assertEqual(response.wsgi_request.user, self.user)
+
+    def test_login_invalid_credentials(self):
+        """Test login with invalid credentials shows error."""
+        url = reverse("accounts:login")
+        data = {"username": "testuser", "password": "wrongpassword"}
+        response = self.client.post(url, data)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.wsgi_request.user.is_authenticated)
+        self.assertContains(response, "Bitte korrigieren Sie die folgenden Fehler")
+
+    def test_login_nonexistent_user(self):
+        """Test login with nonexistent user shows error."""
+        url = reverse("accounts:login")
+        data = {"username": "nonexistent", "password": "testpass123"}
+        response = self.client.post(url, data)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.wsgi_request.user.is_authenticated)
+
+    def test_logout_redirects_to_login(self):
+        """Test logout redirects to login page."""
+        # First login
+        self.client.login(username="testuser", password="testpass123")
+
+        # Then logout
+        url = reverse("accounts:logout")
+        response = self.client.post(url)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse("accounts:login"))
+
+    def test_password_reset_view_get(self):
+        """Test GET request to password reset view."""
+        url = reverse("accounts:password_reset")
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Passwort zurücksetzen")
+        self.assertContains(response, "E-Mail-Adresse")
+
+    def test_password_reset_post_valid_email(self):
+        """Test password reset with valid email sends email."""
+        url = reverse("accounts:password_reset")
+        data = {"email": self.user.email}
+        response = self.client.post(url, data)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse("accounts:password_reset_done"))
+
+        # Check email was sent
+        self.assertEqual(len(mail.outbox), 1)
+        email = mail.outbox[0]
+        self.assertIn("Passwort zurücksetzen", email.subject)
+        self.assertIn(self.user.email, email.to)
+        self.assertIn("password_reset_confirm", email.body)
+
+    def test_password_reset_post_invalid_email(self):
+        """Test password reset with invalid email still redirects (security)."""
+        url = reverse("accounts:password_reset")
+        data = {"email": "nonexistent@example.com"}
+        response = self.client.post(url, data)
+
+        # Django redirects even for invalid emails (security best practice)
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse("accounts:password_reset_done"))
+
+        # No email should be sent
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_password_reset_done_view(self):
+        """Test password reset done view."""
+        url = reverse("accounts:password_reset_done")
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "E-Mail erfolgreich versendet")
+        self.assertContains(response, "✉️")
+
+    def test_password_reset_confirm_valid_token(self):
+        """Test password reset confirm with valid token."""
+        from django.contrib.auth.tokens import default_token_generator
+        from django.utils.encoding import force_bytes
+        from django.utils.http import urlsafe_base64_encode
+
+        # Generate valid token and uid
+        token = default_token_generator.make_token(self.user)
+        uid = urlsafe_base64_encode(force_bytes(self.user.pk))
+
+        url = reverse(
+            "accounts:password_reset_confirm", kwargs={"uidb64": uid, "token": token}
+        )
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Neues Passwort festlegen")
+        self.assertContains(response, "Passwort-Anforderungen")
+
+    def test_password_reset_confirm_invalid_token(self):
+        """Test password reset confirm with invalid token."""
+        from django.utils.encoding import force_bytes
+        from django.utils.http import urlsafe_base64_encode
+
+        uid = urlsafe_base64_encode(force_bytes(self.user.pk))
+        url = reverse(
+            "accounts:password_reset_confirm",
+            kwargs={"uidb64": uid, "token": "invalid-token"},
+        )
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Ungültiger Link")
+
+    def test_password_reset_confirm_post_success(self):
+        """Test successful password reset confirmation."""
+        from django.contrib.auth.tokens import default_token_generator
+        from django.utils.encoding import force_bytes
+        from django.utils.http import urlsafe_base64_encode
+
+        # Generate valid token and uid
+        token = default_token_generator.make_token(self.user)
+        uid = urlsafe_base64_encode(force_bytes(self.user.pk))
+
+        url = reverse(
+            "accounts:password_reset_confirm", kwargs={"uidb64": uid, "token": token}
+        )
+        data = {"new_password1": "newpassword123", "new_password2": "newpassword123"}
+        response = self.client.post(url, data)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse("accounts:password_reset_complete"))
+
+        # Check password was changed
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("newpassword123"))
+
+    def test_password_reset_confirm_post_password_mismatch(self):
+        """Test password reset confirmation with password mismatch."""
+        from django.contrib.auth.tokens import default_token_generator
+        from django.utils.encoding import force_bytes
+        from django.utils.http import urlsafe_base64_encode
+
+        token = default_token_generator.make_token(self.user)
+        uid = urlsafe_base64_encode(force_bytes(self.user.pk))
+
+        url = reverse(
+            "accounts:password_reset_confirm", kwargs={"uidb64": uid, "token": token}
+        )
+        data = {"new_password1": "newpassword123", "new_password2": "differentpassword"}
+        response = self.client.post(url, data)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Die beiden Passwort-Felder")
+
+    def test_password_reset_complete_view(self):
+        """Test password reset complete view."""
+        url = reverse("accounts:password_reset_complete")
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Passwort erfolgreich geändert")
+        self.assertContains(response, "✅")
+        self.assertContains(response, "Jetzt anmelden")
+
+
+class AccountLockoutTest(TestCase):
+    """Test account lockout functionality using django-axes."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(
+            username="testuser",
+            email="test@example.com",
+            password="testpass123",
+            role="employee",
+        )
+        self.login_url = reverse("accounts:login")
+
+    def test_failed_login_attempts_increase_counter(self):
+        """Test that failed login attempts are tracked."""
+        # Make 3 failed attempts
+        for _ in range(3):
+            response = self.client.post(
+                self.login_url, {"username": "testuser", "password": "wrongpass"}
+            )
+            self.assertEqual(response.status_code, 200)
+
+        # Check that axes recorded the attempts
+        from axes.models import AccessAttempt
+
+        attempts = AccessAttempt.objects.filter(username="testuser")
+        self.assertTrue(attempts.exists())
+
+    def test_account_lockout_after_max_attempts(self):
+        """Test that account gets locked after maximum failed attempts."""
+        # Make 5 failed attempts (AXES_FAILURE_LIMIT)
+        for i in range(5):
+            response = self.client.post(
+                self.login_url, {"username": "testuser", "password": "wrongpass"}
+            )
+            # First 4 attempts should show normal login form
+            if i < 4:
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, "Anmelden")
+
+        # 6th attempt should be redirected to lockout page
+        response = self.client.post(
+            self.login_url, {"username": "testuser", "password": "wrongpass"}
+        )
+        self.assertEqual(response.status_code, 302)
+
+    def test_locked_account_shows_lockout_page(self):
+        """Test that locked account shows proper lockout page."""
+        # Lock the account first
+        for _ in range(6):
+            self.client.post(
+                self.login_url, {"username": "testuser", "password": "wrongpass"}
+            )
+
+        # Try to access lockout URL directly
+        lockout_url = reverse("accounts:locked")
+        response = self.client.get(lockout_url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Konto temporär gesperrt")
+        self.assertContains(response, "🔒")
+        self.assertContains(response, "1 Stunde")
+
+    def test_successful_login_resets_attempts(self):
+        """Test that successful login resets failed attempts counter."""
+        # Make some failed attempts
+        for _ in range(2):
+            self.client.post(
+                self.login_url, {"username": "testuser", "password": "wrongpass"}
+            )
+
+        # Now login successfully
+        response = self.client.post(
+            self.login_url, {"username": "testuser", "password": "testpass123"}
+        )
+
+        # Should be successful
+        self.assertEqual(response.status_code, 302)
+
+        # Check that attempts were reset
+        from axes.models import AccessAttempt
+
+        attempts = AccessAttempt.objects.filter(username="testuser")
+        # Attempts should be cleared on success due to AXES_RESET_ON_SUCCESS
+        self.assertEqual(attempts.count(), 0)
+
+    def test_lockout_parameters_combination(self):
+        """Test that lockout uses combination of username and IP."""
+        # This tests AXES_LOCKOUT_PARAMETERS = ["username", "ip_address"]
+        # Make failed attempts from same IP with same username
+        for _ in range(5):
+            response = self.client.post(
+                self.login_url,
+                {"username": "testuser", "password": "wrongpass"},
+                REMOTE_ADDR="192.168.1.100",
+            )
+
+        # Should be locked for this username/IP combination
+        response = self.client.post(
+            self.login_url,
+            {"username": "testuser", "password": "wrongpass"},
+            REMOTE_ADDR="192.168.1.100",
+        )
+        self.assertEqual(response.status_code, 302)
+
+        # But different IP should still work (until it reaches limit too)
+        response = self.client.post(
+            self.login_url,
+            {"username": "testuser", "password": "wrongpass"},
+            REMOTE_ADDR="192.168.1.101",
+        )
+        self.assertEqual(response.status_code, 200)  # Should still show login form
+
+
+class HomeViewAuthenticationTest(TestCase):
+    """Test home view shows different content for authenticated and anonymous users."""
+
+    def setUp(self):
+        self.client = Client()
+        self.employee = User.objects.create_user(
+            username="employee",
+            email="employee@example.com",
+            first_name="Test",
+            last_name="Employee",
+            password="testpass123",
+            role="employee",
+        )
+        self.backoffice = User.objects.create_user(
+            username="backoffice",
+            email="backoffice@example.com",
+            first_name="Back",
+            last_name="Office",
+            password="testpass123",
+            role="backoffice",
+        )
+
+    def test_home_view_anonymous_user(self):
+        """Test home view for anonymous user shows login section."""
+        url = reverse("home")
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Anmelden")
+        self.assertContains(response, "Jetzt anmelden")
+        self.assertNotContains(response, "Willkommen")
+
+    def test_home_view_authenticated_employee(self):
+        """Test home view for authenticated employee."""
+        self.client.login(username="employee", password="testpass123")
+        url = reverse("home")
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Willkommen")
+        self.assertContains(response, "Test Employee")
+        self.assertContains(response, "Mitarbeiter")
+        self.assertContains(response, "Dashboard")
+        self.assertContains(response, "Abmelden")
+
+    def test_home_view_authenticated_backoffice(self):
+        """Test home view for authenticated backoffice user."""
+        self.client.login(username="backoffice", password="testpass123")
+        url = reverse("home")
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Willkommen")
+        self.assertContains(response, "Back Office")
+        self.assertContains(response, "Backoffice")
+        self.assertContains(response, "Admin-Bereich")
+        self.assertContains(response, "Mitarbeiter anlegen")
+        self.assertContains(response, "Abmelden")
+
+    def test_logout_link_functionality(self):
+        """Test logout link in home view works correctly."""
+        self.client.login(username="employee", password="testpass123")
+
+        # Access home page to confirm login
+        url = reverse("home")
+        response = self.client.get(url)
+        self.assertContains(response, "Willkommen")
+
+        # Click logout link
+        logout_url = reverse("accounts:logout")
+        response = self.client.post(logout_url)
+
+        # Should redirect to login page
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse("accounts:login"))
+
+        # Access home page again - should show login section
+        response = self.client.get(url)
+        self.assertContains(response, "Anmelden")
+        self.assertNotContains(response, "Willkommen")
