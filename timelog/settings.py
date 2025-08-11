@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 import os
+import sys
 from pathlib import Path
 
 import dj_database_url
@@ -40,10 +41,12 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "axes",
     "accounts",
 ]
 
 MIDDLEWARE = [
+    "axes.middleware.AxesMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -145,6 +148,36 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Custom User Model
 AUTH_USER_MODEL = "accounts.User"
+
+# Authentication settings
+LOGIN_URL = "/accounts/login/"
+LOGIN_REDIRECT_URL = "/"
+LOGOUT_REDIRECT_URL = "/accounts/login/"
+
+# Authentication backends
+TESTING = (
+    any(arg in sys.argv for arg in ["test", "pytest", "py.test"])
+    or "pytest" in sys.modules
+)
+
+if TESTING:
+    # Disable axes in tests to avoid request parameter requirements
+    AUTHENTICATION_BACKENDS = [
+        "django.contrib.auth.backends.ModelBackend",
+    ]
+else:
+    AUTHENTICATION_BACKENDS = [
+        "axes.backends.AxesBackend",
+        "django.contrib.auth.backends.ModelBackend",
+    ]
+
+# Django-axes configuration (Account lockout after failed login attempts)
+AXES_FAILURE_LIMIT = 5
+AXES_COOLOFF_TIME = 1  # 1 hour
+AXES_LOCKOUT_PARAMETERS = ["username", "ip_address"]
+AXES_RESET_ON_SUCCESS = True
+AXES_LOCKOUT_TEMPLATE = "accounts/lockout.html"
+AXES_LOCKOUT_URL = "/accounts/locked/"
 
 # Email Configuration
 # For development: print emails to console

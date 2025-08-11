@@ -156,7 +156,7 @@ class TimeEntryAdmin(admin.ModelAdmin):
         "created_by",
         "created_at",
     )
-    
+
     list_filter = (
         "date",
         "pollution_level",
@@ -166,23 +166,29 @@ class TimeEntryAdmin(admin.ModelAdmin):
         ("user", admin.RelatedOnlyFieldListFilter),
         ("created_by", admin.RelatedOnlyFieldListFilter),
     )
-    
+
     search_fields = (
         "user__first_name",
-        "user__last_name", 
+        "user__last_name",
         "user__email",
         "notes",
     )
-    
+
     date_hierarchy = "date"
     ordering = ("-date", "user")
-    
+
     # Form configuration
     fieldsets = (
         (
             "Arbeitszeit",
             {
-                "fields": ("user", "date", "start_time", "end_time", "lunch_break_minutes"),
+                "fields": (
+                    "user",
+                    "date",
+                    "start_time",
+                    "end_time",
+                    "lunch_break_minutes",
+                ),
             },
         ),
         (
@@ -199,56 +205,70 @@ class TimeEntryAdmin(admin.ModelAdmin):
             },
         ),
     )
-    
+
     readonly_fields = ("total_work_hours", "total_work_minutes")
-    
+
     def total_work_hours(self, obj):
         """Display total work hours as readonly field."""
         return f"{obj.total_work_hours:.1f} Stunden"
-    
+
     total_work_hours.short_description = "Arbeitszeit (Stunden)"
-    
+
     def save_model(self, request, obj, form, change):
         """Set created_by and updated_by fields automatically."""
         if not change:  # New object
             obj.created_by = request.user
         obj.updated_by = request.user
         super().save_model(request, obj, form, change)
-    
+
     def get_queryset(self, request):
         """Optimize queryset with select_related."""
-        return super().get_queryset(request).select_related("user", "created_by", "updated_by")
-    
+        return (
+            super()
+            .get_queryset(request)
+            .select_related("user", "created_by", "updated_by")
+        )
+
     # Custom actions
     actions = ["export_to_csv"]
-    
+
     def export_to_csv(self, request, queryset):
         """Export selected time entries to CSV."""
         import csv
+
         from django.http import HttpResponse
-        
+
         response = HttpResponse(content_type="text/csv")
         response["Content-Disposition"] = 'attachment; filename="zeiteintraege.csv"'
-        
+
         writer = csv.writer(response)
-        writer.writerow([
-            "Datum", "Mitarbeiter", "Startzeit", "Endzeit", 
-            "Mittagspause (Min)", "Verschmutzungsgrad", 
-            "Arbeitszeit (Std)", "Notizen"
-        ])
-        
+        writer.writerow(
+            [
+                "Datum",
+                "Mitarbeiter",
+                "Startzeit",
+                "Endzeit",
+                "Mittagspause (Min)",
+                "Verschmutzungsgrad",
+                "Arbeitszeit (Std)",
+                "Notizen",
+            ]
+        )
+
         for entry in queryset:
-            writer.writerow([
-                entry.date,
-                entry.user.get_full_name(),
-                entry.start_time,
-                entry.end_time,
-                entry.lunch_break_minutes,
-                entry.get_pollution_level_display(),
-                f"{entry.total_work_hours:.1f}",
-                entry.notes or "",
-            ])
-        
+            writer.writerow(
+                [
+                    entry.date,
+                    entry.user.get_full_name(),
+                    entry.start_time,
+                    entry.end_time,
+                    entry.lunch_break_minutes,
+                    entry.get_pollution_level_display(),
+                    f"{entry.total_work_hours:.1f}",
+                    entry.notes or "",
+                ]
+            )
+
         return response
-    
+
     export_to_csv.short_description = "Ausgewählte Einträge als CSV exportieren"

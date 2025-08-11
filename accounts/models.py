@@ -149,10 +149,8 @@ class TimeEntry(models.Model):
         if self.start_time and self.end_time:
             # Check if this is potentially an overnight shift
             # Overnight shifts: start after 18:00 AND end before 12:00
-            is_overnight_shift = (
-                self.start_time.hour >= 18 and self.end_time.hour <= 12
-            )
-            
+            is_overnight_shift = self.start_time.hour >= 18 and self.end_time.hour <= 12
+
             if self.start_time >= self.end_time and not is_overnight_shift:
                 raise ValidationError(
                     {"end_time": "Endzeit muss nach der Startzeit liegen."}

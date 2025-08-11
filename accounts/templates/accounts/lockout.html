@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Konto temporär gesperrt - Timelog</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            padding: 40px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            text-align: center;
+        }
+        .logo {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #dc3545;
+            font-size: 1.1em;
+            margin-bottom: 30px;
+            font-weight: 500;
+        }
+        .warning-icon {
+            font-size: 3em;
+            color: #dc3545;
+            margin-bottom: 20px;
+        }
+        .message {
+            color: #333;
+            font-size: 16px;
+            line-height: 1.5;
+            margin-bottom: 30px;
+        }
+        .message strong {
+            color: #dc3545;
+        }
+        .note {
+            background-color: #fff3cd;
+            color: #856404;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #ffc107;
+            margin-bottom: 30px;
+            font-size: 14px;
+            text-align: left;
+        }
+        .note ul {
+            margin: 10px 0 0 0;
+            padding-left: 20px;
+        }
+        .contact-info {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #007bff;
+            margin-bottom: 30px;
+            font-size: 14px;
+            text-align: left;
+        }
+        .home-link {
+            margin-top: 20px;
+        }
+        .home-link a {
+            color: #007bff;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        .home-link a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">⏰ Timelog</div>
+        <div class="subtitle">Konto temporär gesperrt</div>
+        
+        <div class="warning-icon">🔒</div>
+        
+        <div class="message">
+            <strong>Zu viele fehlgeschlagene Anmeldeversuche!</strong><br>
+            Ihr Konto wurde aus Sicherheitsgründen vorübergehend gesperrt.
+        </div>
+        
+        <div class="note">
+            <strong>Was passiert ist:</strong><br>
+            Es wurden zu viele fehlgeschlagene Anmeldeversuche von Ihrer IP-Adresse registriert.
+            <br><br>
+            <strong>Wie lange dauert die Sperre?</strong><br>
+            Die Sperre wird automatisch nach 1 Stunde aufgehoben.
+        </div>
+        
+        <div class="contact-info">
+            <strong>Benötigen Sie sofort Zugang?</strong><br>
+            Falls Sie Ihr Passwort vergessen haben oder sofortigen Zugang benötigen, 
+            kontaktieren Sie bitte Ihren Administrator oder die IT-Abteilung.
+        </div>
+        
+        <div class="home-link">
+            <a href="{% url 'home' %}">← Zurück zur Startseite</a>
+        </div>
+    </div>
+</body>
+</html>
