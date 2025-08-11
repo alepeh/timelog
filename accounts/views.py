@@ -168,6 +168,13 @@ def time_entry_create(request):
     if request.method == "POST":
         form = TimeEntryForm(request.POST, user=request.user)
         if form.is_valid():
+            # Check for warnings before saving
+            warnings = form.get_warnings()
+            if warnings:
+                # Display warnings but allow saving
+                for warning in warnings:
+                    messages.warning(request, warning)
+
             time_entry = form.save(commit=False)
             time_entry.user = request.user
             time_entry.created_by = request.user
@@ -208,6 +215,13 @@ def time_entry_edit(request, entry_id):
     if request.method == "POST":
         form = TimeEntryForm(request.POST, instance=time_entry, user=request.user)
         if form.is_valid():
+            # Check for warnings before saving
+            warnings = form.get_warnings()
+            if warnings:
+                # Display warnings but allow saving
+                for warning in warnings:
+                    messages.warning(request, warning)
+
             time_entry = form.save(commit=False)
             time_entry.updated_by = request.user
             time_entry.save()

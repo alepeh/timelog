@@ -1165,7 +1165,10 @@ class TimeEntryFormTest(TestCase):
 
         form = TimeEntryForm(data=invalid_data, user=self.user)
         self.assertFalse(form.is_valid())
-        self.assertIn("kann nicht länger sein", str(form.errors))
+        # Updated validation now uses the new US-C06 message
+        self.assertIn(
+            "Die Arbeitszeit (ohne Pause) muss positiv sein", str(form.errors)
+        )
 
     def test_form_validates_future_date(self):
         """Test that date cannot be in the future."""
@@ -1231,6 +1234,135 @@ class TimeEntryFormTest(TestCase):
 
         form = TimeEntryForm(user=self.user)
         self.assertEqual(form.fields["date"].initial, timezone.now().date())
+
+    def test_form_validates_negative_zero_duration(self):
+        """Test US-C06 requirement: no negative/zero durations."""
+        # Test negative duration (lunch break too long)
+        negative_data = self.valid_data.copy()
+        negative_data["start_time"] = time(9, 0)
+        negative_data["end_time"] = time(10, 0)  # 1 hour total
+        negative_data["lunch_break_minutes"] = 70  # 70 minutes lunch > 60 minutes total
+
+        form = TimeEntryForm(data=negative_data, user=self.user)
+        self.assertFalse(form.is_valid())
+        self.assertIn(
+            "Die Arbeitszeit (ohne Pause) muss positiv sein", str(form.errors)
+        )
+
+        # Test zero net duration (exactly zero work time)
+        zero_net_data = self.valid_data.copy()
+        zero_net_data["start_time"] = time(9, 0)
+        zero_net_data["end_time"] = time(10, 0)  # 1 hour total
+        zero_net_data["lunch_break_minutes"] = 60  # 60 minutes lunch = 60 minutes total
+
+        form = TimeEntryForm(data=zero_net_data, user=self.user)
+        self.assertFalse(form.is_valid())
+        self.assertIn(
+            "Die Arbeitszeit (ohne Pause) muss positiv sein", str(form.errors)
+        )
+
+    def test_form_warns_very_long_workdays(self):
+        """Test US-C06 requirement: warning for >10h net work."""
+        long_day_data = self.valid_data.copy()
+        long_day_data["start_time"] = time(7, 0)  # 7 AM
+        long_day_data["end_time"] = time(20, 0)  # 8 PM = 13 hours total
+        long_day_data["lunch_break_minutes"] = 60  # 1 hour lunch = 12h net work
+
+        form = TimeEntryForm(data=long_day_data, user=self.user)
+        self.assertTrue(form.is_valid())  # Should be valid but have warnings
+
+        warnings = form.get_warnings()
+        self.assertTrue(len(warnings) > 0)
+        self.assertIn("Sehr langer Arbeitstag", warnings[0])
+        self.assertIn("12.0 Stunden", warnings[0])
+
+    def test_form_warns_weekend_work_saturday(self):
+        """Test US-C06 requirement: confirmation for weekend work (Saturday)."""
+        from datetime import date as date_class
+
+        # Find next Saturday
+        saturday_data = self.valid_data.copy()
+        # Use a known Saturday: 2024-01-13
+        saturday_data["date"] = date_class(2024, 1, 13)  # Saturday
+
+        form = TimeEntryForm(data=saturday_data, user=self.user)
+        self.assertTrue(form.is_valid())  # Should be valid but have warnings
+
+        warnings = form.get_warnings()
+        self.assertTrue(len(warnings) > 0)
+        self.assertIn("Arbeit am Samstag", warnings[0])
+        self.assertIn("13.01.2024", warnings[0])
+
+    def test_form_warns_weekend_work_sunday(self):
+        """Test US-C06 requirement: confirmation for weekend work (Sunday)."""
+        from datetime import date as date_class
+
+        sunday_data = self.valid_data.copy()
+        # Use a known Sunday: 2024-01-14
+        sunday_data["date"] = date_class(2024, 1, 14)  # Sunday
+
+        form = TimeEntryForm(data=sunday_data, user=self.user)
+        self.assertTrue(form.is_valid())  # Should be valid but have warnings
+
+        warnings = form.get_warnings()
+        self.assertTrue(len(warnings) > 0)
+        self.assertIn("Arbeit am Sonntag", warnings[0])
+        self.assertIn("14.01.2024", warnings[0])
+
+    def test_form_no_warnings_normal_weekday(self):
+        """Test that normal weekday work has no warnings."""
+        from datetime import date as date_class
+
+        # Use a known Monday with normal hours
+        weekday_data = self.valid_data.copy()
+        weekday_data["date"] = date_class(2024, 1, 15)  # Monday
+        weekday_data["start_time"] = time(9, 0)
+        weekday_data["end_time"] = time(17, 0)  # 8 hours
+        weekday_data["lunch_break_minutes"] = 30  # 7.5h net work
+
+        form = TimeEntryForm(data=weekday_data, user=self.user)
+        self.assertTrue(form.is_valid())
+
+        warnings = form.get_warnings()
+        self.assertEqual(len(warnings), 0)
+
+    def test_form_multiple_warnings_combined(self):
+        """Test form can handle multiple warnings (long day + weekend)."""
+        from datetime import date as date_class
+
+        # Saturday with very long hours
+        combined_data = self.valid_data.copy()
+        combined_data["date"] = date_class(2024, 1, 13)  # Saturday
+        combined_data["start_time"] = time(6, 0)  # 6 AM
+        combined_data["end_time"] = time(20, 0)  # 8 PM = 14 hours total
+        combined_data["lunch_break_minutes"] = 60  # 1 hour lunch = 13h net work
+
+        form = TimeEntryForm(data=combined_data, user=self.user)
+        self.assertTrue(form.is_valid())  # Should be valid but have multiple warnings
+
+        warnings = form.get_warnings()
+        self.assertEqual(len(warnings), 2)  # Should have both warnings
+
+        # Check both warnings are present
+        warning_text = " ".join(warnings)
+        self.assertIn("Sehr langer Arbeitstag", warning_text)
+        self.assertIn("13.0 Stunden", warning_text)
+        self.assertIn("Arbeit am Samstag", warning_text)
+
+    def test_form_exactly_ten_hours_no_warning(self):
+        """Test that exactly 10 hours doesn't trigger warning."""
+        exactly_ten_data = self.valid_data.copy()
+        exactly_ten_data["start_time"] = time(8, 0)  # 8 AM
+        exactly_ten_data["end_time"] = time(18, 30)  # 6:30 PM = 10.5 hours total
+        exactly_ten_data["lunch_break_minutes"] = 30  # 0.5 hour lunch = 10h net work
+
+        form = TimeEntryForm(data=exactly_ten_data, user=self.user)
+        self.assertTrue(form.is_valid())
+
+        warnings = form.get_warnings()
+        # Should not have long day warning for exactly 10 hours
+        long_day_warnings = [w for w in warnings if "Sehr langer Arbeitstag" in w]
+        self.assertEqual(len(long_day_warnings), 0)
 
 
 class TimeEntryViewTest(TestCase):
