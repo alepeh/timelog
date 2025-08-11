@@ -195,6 +195,55 @@ Recommended settings (Django ≥ 4, psycopg 3):
 
 ---
 
+## 🔧 Django Admin & Superuser Setup
+
+The Django admin interface is fully configured with comprehensive model registration and filters.
+
+### Create Superuser
+
+1) **Local Development (SQLite)**:
+   ```bash
+   python manage.py createsuperuser
+   ```
+
+2) **Production (PostgreSQL)**:
+   ```bash
+   # Set DATABASE_URL first
+   export DATABASE_URL=postgresql://user:password@host:5432/dbname
+   python manage.py createsuperuser
+   ```
+
+3) **Using Environment Variables**:
+   ```bash
+   # Create superuser non-interactively
+   export DJANGO_SUPERUSER_USERNAME=admin
+   export DJANGO_SUPERUSER_EMAIL=admin@example.com  
+   export DJANGO_SUPERUSER_PASSWORD=secure_password_here
+   python manage.py createsuperuser --noinput
+   ```
+
+### Admin Features
+
+- **User Management**: Create employees/backoffice users with automatic invitation emails
+- **Time Entry Management**: Full CRUD with filtering, search, and CSV export
+- **Comprehensive Filters**: Date ranges, pollution levels, user roles, creation dates
+- **Audit Trail**: Automatic tracking of created_by/updated_by fields
+- **Email Invitations**: Automatic generation of first-login tokens and invitation emails
+
+### Admin URL
+
+- Local: http://localhost:8000/admin/
+- Production: https://yourdomain.com/admin/
+
+### Security Notes
+
+- Always use strong passwords for superuser accounts
+- Superuser credentials are stored separately from regular user accounts
+- First-login tokens are automatically generated for new users
+- Email invitations include secure token-based authentication
+
+---
+
 ## 📄 Example Changelog Entry
 
 ```text

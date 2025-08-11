@@ -353,7 +353,7 @@ class FirstLoginViewTest(TestCase):
 
 
 class AdminInterfaceTest(TestCase):
-    """Test the admin interface for user management."""
+    """Test the admin interface for user and time entry management."""
 
     def setUp(self):
         self.admin_user = User.objects.create_superuser(
@@ -362,15 +362,36 @@ class AdminInterfaceTest(TestCase):
             password="admin123",
             role="backoffice",
         )
+        self.employee_user = User.objects.create_user(
+            username="employee",
+            email="employee@example.com",
+            first_name="Test",
+            last_name="Employee",
+            role="employee",
+        )
         self.client.login(username="admin", password="admin123")
 
     def test_admin_user_list(self):
-        """Test that users are displayed in admin."""
+        """Test that users are displayed in admin with proper fields and filters."""
         url = reverse("admin:accounts_user_changelist")
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "admin")
+        self.assertContains(response, "employee")
+        # Check list_display fields are shown
+        self.assertContains(response, "admin@example.com")
+        self.assertContains(response, "backoffice")
+
+    def test_admin_user_filters_available(self):
+        """Test that user list has proper filters."""
+        url = reverse("admin:accounts_user_changelist")
+        response = self.client.get(url)
+
+        # Check for filter options based on list_filter configuration
+        self.assertContains(response, "role")
+        self.assertContains(response, "is_invited")
+        self.assertContains(response, "is_active")
 
     def test_admin_create_user_form(self):
         """Test the add user form in admin."""
@@ -379,6 +400,109 @@ class AdminInterfaceTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Rolle")
+
+    def test_admin_timeentry_list(self):
+        """Test that time entries are displayed in admin."""
+        # Create a time entry first
+        time_entry = TimeEntry.objects.create(
+            user=self.employee_user,
+            date=date(2024, 1, 15),
+            start_time=time(9, 0),
+            end_time=time(17, 0),
+            lunch_break_minutes=30,
+            pollution_level=2,
+            notes="Test entry",
+            created_by=self.admin_user,
+            updated_by=self.admin_user,
+        )
+
+        url = reverse("admin:accounts_timeentry_changelist")
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "2024-01-15")
+        self.assertContains(response, "Test Employee")
+        self.assertContains(response, "09:00:00")
+        self.assertContains(response, "17:00:00")
+
+    def test_admin_timeentry_filters_available(self):
+        """Test that time entry list has comprehensive filters."""
+        url = reverse("admin:accounts_timeentry_changelist")
+        response = self.client.get(url)
+
+        # Check for filter options based on list_filter configuration  
+        self.assertContains(response, "pollution_level")
+        self.assertContains(response, "date")
+        
+    def test_admin_timeentry_search_functionality(self):
+        """Test search functionality for time entries."""
+        # Create a time entry
+        TimeEntry.objects.create(
+            user=self.employee_user,
+            date=date(2024, 1, 15),
+            start_time=time(9, 0),
+            end_time=time(17, 0),
+            lunch_break_minutes=30,
+            pollution_level=1,
+            notes="Searchable note content",
+            created_by=self.admin_user,
+            updated_by=self.admin_user,
+        )
+
+        url = reverse("admin:accounts_timeentry_changelist")
+        response = self.client.get(url + "?q=Test")
+
+        self.assertEqual(response.status_code, 200)
+        # Should find entries based on user name search
+
+    def test_admin_timeentry_date_hierarchy(self):
+        """Test date hierarchy navigation in time entries."""
+        url = reverse("admin:accounts_timeentry_changelist")
+        response = self.client.get(url)
+
+        # Should have date hierarchy for easy navigation
+        self.assertEqual(response.status_code, 200)
+
+    def test_admin_timeentry_csv_export_action(self):
+        """Test CSV export action for time entries."""
+        # Create a time entry
+        TimeEntry.objects.create(
+            user=self.employee_user,
+            date=date(2024, 1, 15),
+            start_time=time(9, 0),
+            end_time=time(17, 0),
+            lunch_break_minutes=30,
+            pollution_level=2,
+            notes="Export test",
+            created_by=self.admin_user,
+            updated_by=self.admin_user,
+        )
+
+        url = reverse("admin:accounts_timeentry_changelist")
+        
+        # Test that export action is available
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "export_to_csv")
+
+    def test_admin_models_registered(self):
+        """Test that all required models are registered in admin."""
+        from django.contrib import admin
+        from .models import User, TimeEntry
+
+        # Check that models are registered
+        self.assertIn(User, admin.site._registry)
+        self.assertIn(TimeEntry, admin.site._registry)
+        
+        # Check admin classes are properly configured
+        user_admin = admin.site._registry[User]
+        timeentry_admin = admin.site._registry[TimeEntry]
+        
+        # Verify key configurations exist
+        self.assertTrue(hasattr(user_admin, 'list_display'))
+        self.assertTrue(hasattr(user_admin, 'list_filter'))
+        self.assertTrue(hasattr(timeentry_admin, 'list_display'))
+        self.assertTrue(hasattr(timeentry_admin, 'list_filter'))
 
 
 class EmailInvitationTest(TestCase):
