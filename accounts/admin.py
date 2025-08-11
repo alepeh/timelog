@@ -148,7 +148,7 @@ Das Timelog-Team
         # Superusers always have permission
         if request.user.is_superuser:
             return True
-            
+
         if not super().has_view_permission(request, obj):
             return False
 

@@ -271,7 +271,9 @@ class BackofficeRequiredMixin(PermissionMixin):
     """Mixin that requires backoffice role."""
 
     def has_permission(self, request, *args, **kwargs):
-        return request.user.is_authenticated and (request.user.is_superuser or request.user.is_backoffice)
+        return request.user.is_authenticated and (
+            request.user.is_superuser or request.user.is_backoffice
+        )
 
 
 class EmployeeRequiredMixin(PermissionMixin):

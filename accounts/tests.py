@@ -402,7 +402,7 @@ class AdminInterfaceTest(TestCase):
     def test_admin_timeentry_list(self):
         """Test that time entries are displayed in admin."""
         # Create a time entry first
-        entry = TimeEntry.objects.create(
+        TimeEntry.objects.create(
             user=self.employee_user,
             date=date(2025, 1, 15),
             start_time=time(9, 0),
@@ -421,7 +421,9 @@ class AdminInterfaceTest(TestCase):
         # Check that we can find the time entry in the response
         self.assertContains(response, "2025-01-15")
         self.assertContains(response, "Test Employee")
-        self.assertContains(response, "09:00")  # Changed from "09:00:00" as format might be different
+        self.assertContains(
+            response, "09:00"
+        )  # Changed from "09:00:00" as format might be different
         self.assertContains(response, "17:00")  # Changed from "17:00:00"
 
     def test_admin_timeentry_filters_available(self):
@@ -923,21 +925,31 @@ class AdminRoleBasedAccessTest(TestCase):
         # Make employee staff for limited admin access
         self.employee.is_staff = True
         self.employee.save()
-        
+
         # Give employee the minimum Django permissions needed for admin access
         from django.contrib.auth.models import Permission
         from django.contrib.contenttypes.models import ContentType
-        
+
         user_content_type = ContentType.objects.get_for_model(User)
         timeentry_content_type = ContentType.objects.get_for_model(TimeEntry)
-        
+
         # Add view permissions
-        view_user_perm = Permission.objects.get(codename='view_user', content_type=user_content_type)
-        view_timeentry_perm = Permission.objects.get(codename='view_timeentry', content_type=timeentry_content_type)
-        change_user_perm = Permission.objects.get(codename='change_user', content_type=user_content_type)
-        change_timeentry_perm = Permission.objects.get(codename='change_timeentry', content_type=timeentry_content_type)
-        
-        self.employee.user_permissions.add(view_user_perm, view_timeentry_perm, change_user_perm, change_timeentry_perm)
+        view_user_perm = Permission.objects.get(
+            codename="view_user", content_type=user_content_type
+        )
+        view_timeentry_perm = Permission.objects.get(
+            codename="view_timeentry", content_type=timeentry_content_type
+        )
+        change_user_perm = Permission.objects.get(
+            codename="change_user", content_type=user_content_type
+        )
+        change_timeentry_perm = Permission.objects.get(
+            codename="change_timeentry", content_type=timeentry_content_type
+        )
+
+        self.employee.user_permissions.add(
+            view_user_perm, view_timeentry_perm, change_user_perm, change_timeentry_perm
+        )
 
     def test_user_admin_access_control(self):
         """Test UserAdmin role-based access."""
@@ -947,14 +959,14 @@ class AdminRoleBasedAccessTest(TestCase):
         from .models import User
 
         user_admin = admin.site._registry[User]
-        
+
         # Create proper request objects with all necessary attributes
         factory = RequestFactory()
-        
-        employee_request = factory.get('/admin/')
+
+        employee_request = factory.get("/admin/")
         employee_request.user = self.employee
-        
-        backoffice_request = factory.get('/admin/')
+
+        backoffice_request = factory.get("/admin/")
         backoffice_request.user = self.backoffice
 
         # Test view permissions
@@ -1035,14 +1047,14 @@ class AdminRoleBasedAccessTest(TestCase):
         )
 
         timeentry_admin = admin.site._registry[TimeEntry]
-        
+
         # Create proper request objects with all necessary attributes
         factory = RequestFactory()
-        
-        employee_request = factory.get('/admin/')
+
+        employee_request = factory.get("/admin/")
         employee_request.user = self.employee
-        
-        backoffice_request = factory.get('/admin/')
+
+        backoffice_request = factory.get("/admin/")
         backoffice_request.user = self.backoffice
 
         # Test view permissions
@@ -1290,7 +1302,7 @@ class AuthenticationFlowsTest(TestCase):
         # Django redirects to set-password URL on first access with valid token
         self.assertEqual(response.status_code, 302)
         self.assertIn("/set-password/", response.url)
-        
+
         # Follow the redirect to the actual form
         response = self.client.get(response.url)
         self.assertEqual(response.status_code, 200)
@@ -1325,11 +1337,11 @@ class AuthenticationFlowsTest(TestCase):
         url = reverse(
             "accounts:password_reset_confirm", kwargs={"uidb64": uid, "token": token}
         )
-        
+
         # First access the URL to get the set-password redirect
         response = self.client.get(url)
         self.assertEqual(response.status_code, 302)
-        
+
         # Now post to the set-password URL
         data = {"new_password1": "newpassword123", "new_password2": "newpassword123"}
         response = self.client.post(response.url, data)
@@ -1353,11 +1365,11 @@ class AuthenticationFlowsTest(TestCase):
         url = reverse(
             "accounts:password_reset_confirm", kwargs={"uidb64": uid, "token": token}
         )
-        
+
         # First access the URL to get the set-password redirect
         response = self.client.get(url)
         self.assertEqual(response.status_code, 302)
-        
+
         # Now post to the set-password URL with mismatched passwords
         data = {"new_password1": "newpassword123", "new_password2": "differentpassword"}
         response = self.client.post(response.url, data)
@@ -1481,8 +1493,9 @@ class AccountLockoutTest(TestCase):
         )
         self.assertEqual(response.status_code, 429)
 
-        # Note: Different IP behavior depends on axes configuration and test client limitations
-        # In a real environment, this would work, but test client might not simulate IPs properly
+        # Note: Different IP behavior depends on axes configuration and test client
+        # limitations. In a real environment, this would work, but test client
+        # might not simulate IPs properly
 
 
 class HomeViewAuthenticationTest(TestCase):
