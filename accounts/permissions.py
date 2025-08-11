@@ -65,8 +65,8 @@ def can_access_time_entry(user, time_entry):
     if not user.is_authenticated:
         return False
 
-    # Backoffice can access all time entries
-    if user.is_backoffice:
+    # Superusers and backoffice can access all time entries
+    if user.is_superuser or user.is_backoffice:
         return True
 
     # Employees can only access their own time entries
@@ -105,8 +105,8 @@ def can_create_time_entry_for_user(user, target_user):
     if not user.is_authenticated:
         return False
 
-    # Backoffice can create entries for anyone
-    if user.is_backoffice:
+    # Superusers and backoffice can create entries for anyone
+    if user.is_superuser or user.is_backoffice:
         return True
 
     # Employees can only create their own entries
@@ -126,7 +126,7 @@ def can_view_user_list(user):
     Returns:
         bool: True if user can view user list
     """
-    return user.is_authenticated and user.is_backoffice
+    return user.is_authenticated and (user.is_superuser or user.is_backoffice)
 
 
 def can_create_users(user):
@@ -139,7 +139,7 @@ def can_create_users(user):
     Returns:
         bool: True if user can create users
     """
-    return user.is_authenticated and user.is_backoffice
+    return user.is_authenticated and (user.is_superuser or user.is_backoffice)
 
 
 def can_export_time_entries(user):
@@ -152,7 +152,7 @@ def can_export_time_entries(user):
     Returns:
         bool: True if user can export data
     """
-    return user.is_authenticated and user.is_backoffice
+    return user.is_authenticated and (user.is_superuser or user.is_backoffice)
 
 
 def get_accessible_time_entries(user):
@@ -168,8 +168,8 @@ def get_accessible_time_entries(user):
     if not user.is_authenticated:
         return TimeEntry.objects.none()
 
-    if user.is_backoffice:
-        # Backoffice can access all time entries
+    if user.is_superuser or user.is_backoffice:
+        # Superusers and backoffice can access all time entries
         return TimeEntry.objects.all()
 
     if user.is_employee:
@@ -192,8 +192,8 @@ def get_accessible_users(user):
     if not user.is_authenticated:
         return User.objects.none()
 
-    if user.is_backoffice:
-        # Backoffice can see all users
+    if user.is_superuser or user.is_backoffice:
+        # Superusers and backoffice can see all users
         return User.objects.all()
 
     if user.is_employee:
@@ -271,7 +271,9 @@ class BackofficeRequiredMixin(PermissionMixin):
     """Mixin that requires backoffice role."""
 
     def has_permission(self, request, *args, **kwargs):
-        return request.user.is_authenticated and request.user.is_backoffice
+        return request.user.is_authenticated and (
+            request.user.is_superuser or request.user.is_backoffice
+        )
 
 
 class EmployeeRequiredMixin(PermissionMixin):

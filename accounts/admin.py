@@ -145,6 +145,10 @@ Das Timelog-Team
 
     def has_view_permission(self, request, obj=None):
         """Check if user can view the user list."""
+        # Superusers always have permission
+        if request.user.is_superuser:
+            return True
+
         if not super().has_view_permission(request, obj):
             return False
 
@@ -153,7 +157,7 @@ Das Timelog-Team
             return can_view_user_list(request.user)
 
         # For individual users, backoffice can see all, employees only themselves
-        if request.user.is_backoffice:
+        if request.user.is_superuser or request.user.is_backoffice:
             return True
 
         return request.user.is_employee and obj == request.user
