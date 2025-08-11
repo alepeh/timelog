@@ -119,29 +119,53 @@ class TimeEntryForm(forms.ModelForm):
         lunch_break_minutes = cleaned_data.get("lunch_break_minutes", 0)
         date = cleaned_data.get("date")
 
-        # Validate time sequence (US-C01 requirement: end > start)
+        # Calculate work time for all subsequent validations
         if start_time and end_time:
-            # Check for overnight shifts (start after 18:00 AND end before 12:00)
-            is_overnight_shift = start_time.hour >= 18 and end_time.hour <= 12
-
-            if start_time >= end_time and not is_overnight_shift:
-                raise ValidationError("Die Endzeit muss nach der Startzeit liegen.")
-
-        # Validate lunch break (US-C02 requirement: pause <= total time)
-        if start_time and end_time and lunch_break_minutes:
-            # Calculate total work time in minutes
+            # Calculate work time in minutes
             start_minutes = start_time.hour * 60 + start_time.minute
             end_minutes = end_time.hour * 60 + end_time.minute
 
+            # Check for overnight shifts (start after 18:00 AND end before 12:00)
+            is_overnight_shift = start_time.hour >= 18 and end_time.hour <= 12
+
             # Handle overnight work
             if end_minutes <= start_minutes:
-                end_minutes += 24 * 60
+                if not is_overnight_shift:
+                    raise ValidationError("Die Endzeit muss nach der Startzeit liegen.")
+                else:
+                    end_minutes += 24 * 60
 
-            total_minutes = end_minutes - start_minutes
+            total_work_minutes = end_minutes - start_minutes - lunch_break_minutes
 
-            if lunch_break_minutes > total_minutes:
+            # US-C06: Validate no negative/zero duration
+            if total_work_minutes <= 0:
                 raise ValidationError(
-                    "Die Mittagspause kann nicht länger sein als die Gesamtarbeitszeit."
+                    "Die Arbeitszeit (ohne Pause) muss positiv sein. "
+                    "Prüfen Sie Start-, Endzeit und Pausendauer."
+                )
+
+            # US-C06: Warning for very long workdays (>10h net)
+            total_work_hours = total_work_minutes / 60
+            if total_work_hours > 10:
+                # Store warning in form for template to display
+                if not hasattr(self, "_warnings"):
+                    self._warnings = []
+                self._warnings.append(
+                    f"Achtung: Sehr langer Arbeitstag "
+                    f"({total_work_hours:.1f} Stunden netto). "
+                    "Bitte prüfen Sie die Zeitangaben."
+                )
+
+        # US-C06: Confirmation for weekend work
+        if date:
+            # Check if date is weekend (Saturday=5, Sunday=6)
+            if date.weekday() in [5, 6]:  # Saturday or Sunday
+                if not hasattr(self, "_warnings"):
+                    self._warnings = []
+                day_name = "Samstag" if date.weekday() == 5 else "Sonntag"
+                self._warnings.append(
+                    f"Hinweis: Arbeit am {day_name} ({date.strftime('%d.%m.%Y')}). "
+                    "Bitte bestätigen Sie, dass dies korrekt ist."
                 )
 
         # Validate uniqueness per user/date if creating new entry
@@ -156,3 +180,7 @@ class TimeEntryForm(forms.ModelForm):
                 )
 
         return cleaned_data
+
+    def get_warnings(self):
+        """Get list of validation warnings (non-blocking)."""
+        return getattr(self, "_warnings", [])
