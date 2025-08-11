@@ -22,7 +22,7 @@ class CalendarDay:
 
     @property
     def is_workday(self) -> bool:
-        """Check if this is a regular workday (not weekend, holiday, or employee non-working day)."""
+        """Check if this is a regular workday (no weekend/holiday/non-working)."""
         return not (
             self.is_weekend
             or self.is_public_holiday

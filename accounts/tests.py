@@ -1672,7 +1672,9 @@ class TimeEntryViewTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
         # Should contain the pre-filled date in the form field
-        # Should have a successful response with form content  \n        self.assertContains(response, "Neuer Zeiteintrag")\n        self.assertContains(response, 'name="date"')
+        # Should have successful response with form content
+        self.assertContains(response, "Neuer Zeiteintrag")
+        self.assertContains(response, 'name="date"')
 
 
 class ViewRoleBasedAccessTest(TestCase):

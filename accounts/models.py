@@ -241,11 +241,7 @@ class PublicHoliday(models.Model):
         Get all holidays for a specific year, including recurring holidays.
         Returns QuerySet of PublicHoliday objects.
         """
-        from datetime import date
-
-        # Get holidays for the year
         # Get holidays that apply to this year
-
         # Get holidays that fall within the year (both one-time and recurring)
         holidays = cls.objects.filter(
             models.Q(date__year=year)  # Exact year match
@@ -372,7 +368,10 @@ class EmployeeNonWorkingDay(models.Model):
             weekday_name = dict(self.WEEKDAY_CHOICES)[self.weekday]
             return f"{self.employee.get_full_name()} - jeden {weekday_name}"
         elif self.pattern == "monthly" and self.day_of_month:
-            return f"{self.employee.get_full_name()} - jeden {self.day_of_month}. des Monats"
+            return (
+                f"{self.employee.get_full_name()} - "
+                f"jeden {self.day_of_month}. des Monats"
+            )
         else:
             return f"{self.employee.get_full_name()} - {self.get_pattern_display()}"
 
@@ -388,14 +387,20 @@ class EmployeeNonWorkingDay(models.Model):
         if self.pattern == "weekly" and self.weekday is None:
             raise ValidationError(
                 {
-                    "weekday": "Wochentag ist erforderlich bei wöchentlich wiederkehrenden Tagen."
+                    "weekday": (
+                        "Wochentag ist erforderlich bei "
+                        "wöchentlich wiederkehrenden Tagen."
+                    )
                 }
             )
 
         if self.pattern == "monthly" and not self.day_of_month:
             raise ValidationError(
                 {
-                    "day_of_month": "Tag des Monats ist erforderlich bei monatlich wiederkehrenden Tagen."
+                    "day_of_month": (
+                        "Tag des Monats ist erforderlich bei "
+                        "monatlich wiederkehrenden Tagen."
+                    )
                 }
             )
 
