@@ -1,4 +1,5 @@
 import hashlib
+import os
 from datetime import date, time
 
 from django.contrib.auth import get_user_model
@@ -11,6 +12,69 @@ from django.urls import reverse
 from .models import TimeEntry
 
 User = get_user_model()
+
+
+class DatabaseConfigurationTest(TestCase):
+    """Test database configuration per US-E01 requirements."""
+
+    def test_database_configuration_sqlite_for_dev(self):
+        """Test that SQLite is used when DATABASE_URL is not set (development)."""
+        from django.conf import settings
+        from django.db import connection
+        
+        # If DATABASE_URL is not set, should use SQLite
+        if not os.environ.get("DATABASE_URL"):
+            self.assertEqual(
+                connection.vendor, "sqlite", 
+                "Should use SQLite for development when DATABASE_URL is not set"
+            )
+            self.assertIn("sqlite3", settings.DATABASES["default"]["ENGINE"])
+
+    def test_database_configuration_postgresql_for_prod(self):
+        """Test that PostgreSQL is used when DATABASE_URL is set (production)."""
+        from django.conf import settings
+        from django.db import connection
+        
+        # If DATABASE_URL is set, should use PostgreSQL
+        if os.environ.get("DATABASE_URL"):
+            self.assertEqual(
+                connection.vendor, "postgresql",
+                "Should use PostgreSQL when DATABASE_URL is set"
+            )
+            self.assertIn("postgresql", settings.DATABASES["default"]["ENGINE"])
+
+    def test_migrations_work_on_current_database(self):
+        """Test that migrations work on the current database engine."""
+        from django.core.management import call_command
+        from django.db import connection
+        
+        # This test verifies that our models can be migrated on the current DB
+        # This is run in CI with SQLite and can be run manually with PostgreSQL
+        
+        # Verify we can create and query our models
+        user = User.objects.create_user(
+            username="test_db_user",
+            email="test@example.com",
+            role="employee"
+        )
+        
+        time_entry = TimeEntry.objects.create(
+            user=user,
+            date=date(2024, 1, 15),
+            start_time=time(9, 0),
+            end_time=time(17, 0),
+            lunch_break_minutes=30,
+            pollution_level=1,
+            created_by=user,
+            updated_by=user,
+        )
+        
+        # Verify we can query the data
+        self.assertEqual(TimeEntry.objects.filter(user=user).count(), 1)
+        self.assertEqual(time_entry.total_work_minutes, 450)  # 8h - 30min lunch
+        
+        # Log the database engine being used for visibility in test output
+        print(f"Database engine: {connection.vendor}")
 
 
 class UserModelTest(TestCase):
