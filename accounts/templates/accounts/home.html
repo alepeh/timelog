@@ -90,6 +90,15 @@
             background-color: #1e7e34;
             transform: translateY(-1px);
         }
+        .logout-form {
+            display: inline;
+        }
+        .logout-form .btn {
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: inherit;
+        }
         .login-section {
             background: #f8f9fa;
             padding: 30px;
@@ -137,7 +146,10 @@
                 {% else %}
                     <a href="{% url 'admin:index' %}" class="btn btn-primary">Dashboard</a>
                 {% endif %}
-                <a href="{% url 'accounts:logout' %}" class="btn btn-secondary">Abmelden</a>
+                <form method="post" action="{% url 'accounts:logout' %}" class="logout-form">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-secondary">Abmelden</button>
+                </form>
             </div>
         {% else %}
             <div class="login-section">
