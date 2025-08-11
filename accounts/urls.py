@@ -54,9 +54,17 @@ urlpatterns = [
     # Employee management URLs
     path("first-login/<str:token>/", views.first_login_view, name="first_login"),
     path("create-employee/", views.create_employee_view, name="create_employee"),
-    # Time entry URLs (US-C01, US-C02, US-C03)
+    # Time entry URLs (US-C01, US-C02, US-C03, US-C07)
     path("time-entries/", views.time_entry_list, name="time_entry_list"),
+    path(
+        "time-entries/calendar/", views.time_entry_calendar, name="time_entry_calendar"
+    ),
     path("time-entries/new/", views.time_entry_create, name="time_entry_create"),
+    path(
+        "time-entries/new/<str:target_date>/",
+        views.time_entry_create,
+        name="time_entry_create_date",
+    ),
     path(
         "time-entries/<int:entry_id>/edit/",
         views.time_entry_edit,

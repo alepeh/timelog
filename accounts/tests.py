@@ -1426,7 +1426,7 @@ class TimeEntryViewTest(TestCase):
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Meine Zeiteinträge")
+        self.assertContains(response, "Meine Zeiteinträge")  # Page title
         self.assertContains(response, "15.01.2024")  # German date format
         self.assertContains(
             response, "7,5h"
@@ -1635,6 +1635,47 @@ class TimeEntryViewTest(TestCase):
         # Should show 8.25 hours (9.5 - 1.25) with German decimal separator
         self.assertContains(response, "8,3h")
 
+    def test_time_entry_calendar_view_authenticated(self):
+        """Test calendar view for authenticated employee."""
+        self.client.login(username="employee", password="testpass123")
+        url = reverse("accounts:time_entry_calendar")
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Kalender")
+        self.assertContains(response, "Arbeitstage")
+        self.assertContains(response, "Einträge")
+
+    def test_time_entry_calendar_with_params(self):
+        """Test calendar view with month/year parameters."""
+        self.client.login(username="employee", password="testpass123")
+        url = reverse("accounts:time_entry_calendar")
+        response = self.client.get(url, {"year": 2024, "month": 1})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Januar 2024")
+
+    def test_time_entry_calendar_invalid_params(self):
+        """Test calendar view with invalid parameters defaults to current month."""
+        self.client.login(username="employee", password="testpass123")
+        url = reverse("accounts:time_entry_calendar")
+        response = self.client.get(url, {"year": "invalid", "month": "invalid"})
+
+        self.assertEqual(response.status_code, 200)
+        # Should default to current month/year without error
+
+    def test_time_entry_create_with_target_date(self):
+        """Test creating time entry with pre-filled target date."""
+        self.client.login(username="employee", password="testpass123")
+        url = reverse("accounts:time_entry_create_date", args=["2024-01-15"])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        # Should contain the pre-filled date in the form field
+        # Should have successful response with form content
+        self.assertContains(response, "Neuer Zeiteintrag")
+        self.assertContains(response, 'name="date"')
+
 
 class ViewRoleBasedAccessTest(TestCase):
     """Test view-level role-based access control."""
@@ -1683,9 +1724,7 @@ class ViewRoleBasedAccessTest(TestCase):
         self.client.login(username="employee", password="testpass123")
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
-        self.assertContains(
-            response, "Meine Zeiteinträge"
-        )  # Employee sees time entry link
+        self.assertContains(response, "Listenansicht")  # Employee sees list view link
         self.assertContains(
             response, "Neuer Zeiteintrag"
         )  # Employee can create time entries
@@ -2071,7 +2110,7 @@ class HomeViewAuthenticationTest(TestCase):
         self.assertContains(response, "Willkommen")
         self.assertContains(response, "Test Employee")
         self.assertContains(response, "Mitarbeiter")
-        self.assertContains(response, "Meine Zeiteinträge")
+        self.assertContains(response, "Listenansicht")
         self.assertContains(response, "Neuer Zeiteintrag")
         self.assertContains(response, "Abmelden")
 

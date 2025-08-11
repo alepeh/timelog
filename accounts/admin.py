@@ -6,7 +6,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.core.mail import send_mail
 
-from .models import TimeEntry, User
+from .models import EmployeeNonWorkingDay, PublicHoliday, TimeEntry, User
 from .permissions import (
     can_export_time_entries,
     can_view_user_list,
@@ -400,3 +400,220 @@ class TimeEntryAdmin(admin.ModelAdmin):
                 del actions["export_to_csv"]
 
         return actions
+
+
+@admin.register(PublicHoliday)
+class PublicHolidayAdmin(admin.ModelAdmin):
+    """
+    Admin interface for PublicHoliday model.
+    Allows backoffice users to manage public holidays for all employees.
+    """
+
+    # Display configuration
+    list_display = (
+        "name",
+        "date",
+        "is_recurring",
+        "description",
+        "created_at",
+    )
+
+    list_filter = (
+        "is_recurring",
+        "date",
+        "created_at",
+    )
+
+    search_fields = ("name", "description")
+
+    date_hierarchy = "date"
+    ordering = ("date", "name")
+
+    # Form configuration
+    fieldsets = (
+        (
+            "Feiertag",
+            {
+                "fields": (
+                    "name",
+                    "date",
+                    "is_recurring",
+                    "description",
+                ),
+            },
+        ),
+    )
+
+    def has_add_permission(self, request):
+        """Only backoffice users can add public holidays."""
+        return (
+            super().has_add_permission(request)
+            and request.user.is_authenticated
+            and request.user.is_backoffice
+        )
+
+    def has_change_permission(self, request, obj=None):
+        """Only backoffice users can change public holidays."""
+        return (
+            super().has_change_permission(request, obj)
+            and request.user.is_authenticated
+            and request.user.is_backoffice
+        )
+
+    def has_delete_permission(self, request, obj=None):
+        """Only backoffice users can delete public holidays."""
+        return (
+            super().has_delete_permission(request, obj)
+            and request.user.is_authenticated
+            and request.user.is_backoffice
+        )
+
+    def has_view_permission(self, request, obj=None):
+        """All authenticated users can view public holidays."""
+        return (
+            super().has_view_permission(request, obj) and request.user.is_authenticated
+        )
+
+
+@admin.register(EmployeeNonWorkingDay)
+class EmployeeNonWorkingDayAdmin(admin.ModelAdmin):
+    """
+    Admin interface for EmployeeNonWorkingDay model.
+    Allows backoffice users to configure employee-specific non-working days.
+    """
+
+    # Display configuration
+    list_display = (
+        "employee",
+        "pattern",
+        "date",
+        "weekday_display",
+        "day_of_month",
+        "valid_from",
+        "valid_until",
+        "reason",
+    )
+
+    list_filter = (
+        "pattern",
+        "weekday",
+        "employee__role",
+        "valid_from",
+        "valid_until",
+        ("employee", admin.RelatedOnlyFieldListFilter),
+    )
+
+    search_fields = (
+        "employee__first_name",
+        "employee__last_name",
+        "employee__email",
+        "reason",
+    )
+
+    date_hierarchy = "date"
+    ordering = ("employee", "date", "weekday")
+
+    # Form configuration
+    fieldsets = (
+        (
+            "Mitarbeiter",
+            {
+                "fields": ("employee",),
+            },
+        ),
+        (
+            "Muster",
+            {
+                "fields": (
+                    "pattern",
+                    "date",
+                    "weekday",
+                    "day_of_month",
+                ),
+            },
+        ),
+        (
+            "Gültigkeitszeitraum",
+            {
+                "fields": (
+                    "valid_from",
+                    "valid_until",
+                ),
+            },
+        ),
+        (
+            "Details",
+            {
+                "fields": ("reason",),
+            },
+        ),
+    )
+
+    def weekday_display(self, obj):
+        """Display weekday name if set."""
+        if obj.weekday is not None:
+            return dict(EmployeeNonWorkingDay.WEEKDAY_CHOICES)[obj.weekday]
+        return "-"
+
+    weekday_display.short_description = "Wochentag"
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """Limit employee choices to actual employees."""
+        if db_field.name == "employee":
+            kwargs["queryset"] = User.objects.filter(role="employee")
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def has_add_permission(self, request):
+        """Only backoffice users can add employee non-working days."""
+        return (
+            super().has_add_permission(request)
+            and request.user.is_authenticated
+            and request.user.is_backoffice
+        )
+
+    def has_change_permission(self, request, obj=None):
+        """Only backoffice users can change employee non-working days."""
+        return (
+            super().has_change_permission(request, obj)
+            and request.user.is_authenticated
+            and request.user.is_backoffice
+        )
+
+    def has_delete_permission(self, request, obj=None):
+        """Only backoffice users can delete employee non-working days."""
+        return (
+            super().has_delete_permission(request, obj)
+            and request.user.is_authenticated
+            and request.user.is_backoffice
+        )
+
+    def has_view_permission(self, request, obj=None):
+        """Backoffice can view all, employees can view their own."""
+        if not super().has_view_permission(request, obj):
+            return False
+
+        if not request.user.is_authenticated:
+            return False
+
+        if request.user.is_backoffice:
+            return True
+
+        # Employees can view their own non-working days
+        if obj is None:  # List view
+            return request.user.is_employee
+
+        return request.user.is_employee and obj.employee == request.user
+
+    def get_queryset(self, request):
+        """Filter queryset based on user role."""
+        queryset = super().get_queryset(request)
+
+        if request.user.is_superuser or request.user.is_backoffice:
+            return queryset
+
+        # Employees can only see their own non-working days
+        if request.user.is_employee:
+            return queryset.filter(employee=request.user)
+
+        # Default: no access
+        return queryset.none()

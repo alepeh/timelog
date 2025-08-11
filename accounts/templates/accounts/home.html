@@ -144,7 +144,8 @@
                     <a href="{% url 'admin:index' %}" class="btn btn-primary">Admin-Bereich</a>
                     <a href="{% url 'accounts:create_employee' %}" class="btn btn-success">Mitarbeiter anlegen</a>
                 {% else %}
-                    <a href="{% url 'accounts:time_entry_list' %}" class="btn btn-primary">Meine Zeiteinträge</a>
+                    <a href="{% url 'accounts:time_entry_calendar' %}" class="btn btn-primary">Kalender</a>
+                    <a href="{% url 'accounts:time_entry_list' %}" class="btn btn-secondary">Listenansicht</a>
                     <a href="{% url 'accounts:time_entry_create' %}" class="btn btn-success">Neuer Zeiteintrag</a>
                 {% endif %}
                 <form method="post" action="{% url 'accounts:logout' %}" class="logout-form">
