@@ -137,14 +137,14 @@
                 {% else %}
                     <a href="{% url 'admin:index' %}" class="btn btn-primary">Dashboard</a>
                 {% endif %}
-                <a href="{% url 'admin:logout' %}" class="btn btn-secondary">Abmelden</a>
+                <a href="{% url 'accounts:logout' %}" class="btn btn-secondary">Abmelden</a>
             </div>
         {% else %}
             <div class="login-section">
                 <h3 class="login-title">Anmelden</h3>
                 <p>Bitte melden Sie sich an, um auf Ihr Timelog-Konto zuzugreifen.</p>
                 <div class="actions">
-                    <a href="{% url 'admin:login' %}" class="btn btn-primary">Jetzt anmelden</a>
+                    <a href="{% url 'accounts:login' %}" class="btn btn-primary">Jetzt anmelden</a>
                 </div>
             </div>
         {% endif %}

@@ -280,9 +280,8 @@ class TimeEntryAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         """Filter queryset based on user role and optimize with select_related."""
-        return (
-            get_accessible_time_entries(request.user)
-            .select_related("user", "created_by", "updated_by")
+        return get_accessible_time_entries(request.user).select_related(
+            "user", "created_by", "updated_by"
         )
 
     # Custom actions
