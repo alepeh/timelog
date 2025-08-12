@@ -2,7 +2,7 @@ from django import forms
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
-from .models import TimeEntry, User
+from .models import TimeEntry, User, Vehicle, VehicleUsage
 
 
 class CreateEmployeeForm(forms.ModelForm):
@@ -50,8 +50,69 @@ class CreateEmployeeForm(forms.ModelForm):
 class TimeEntryForm(forms.ModelForm):
     """
     Form for employees to create and edit their daily time entries.
-    Covers US-C01 (time tracking), US-C02 (lunch breaks), and US-C03 (pollution level).
+    Covers US-C01 (time tracking), US-C02 (lunch breaks), US-C03 (pollution level),
+    and US-C08 (vehicle tracking with mileage).
     """
+
+    # Vehicle tracking fields (US-C08)
+    vehicle = forms.ModelChoiceField(
+        queryset=Vehicle.objects.filter(is_active=True),
+        required=False,
+        empty_label="Fahrzeug auswählen...",
+        label="Fahrzeug",
+        help_text="Wählen Sie das verwendete Firmenfahrzeug",
+        widget=forms.Select(attrs={"class": "form-control vehicle-field"}),
+    )
+
+    no_vehicle_used = forms.BooleanField(
+        required=False,
+        label="Kein Fahrzeug verwendet",
+        help_text="Aktivieren Sie diese Option, wenn Sie kein Fahrzeug verwendet haben",
+        widget=forms.CheckboxInput(
+            attrs={"class": "form-check-input", "id": "id_no_vehicle_used"}
+        ),
+    )
+
+    start_kilometers = forms.IntegerField(
+        required=False,
+        min_value=0,
+        label="Anfangs-km",
+        help_text="Kilometerstand zu Beginn der Arbeitszeit",
+        widget=forms.NumberInput(
+            attrs={
+                "class": "form-control vehicle-field",
+                "placeholder": "z.B. 50000",
+                "min": "0",
+            }
+        ),
+    )
+
+    end_kilometers = forms.IntegerField(
+        required=False,
+        min_value=0,
+        label="End-km",
+        help_text="Kilometerstand am Ende der Arbeitszeit",
+        widget=forms.NumberInput(
+            attrs={
+                "class": "form-control vehicle-field",
+                "placeholder": "z.B. 50150",
+                "min": "0",
+            }
+        ),
+    )
+
+    vehicle_notes = forms.CharField(
+        required=False,
+        label="Fahrzeug-Notizen",
+        help_text="Zusätzliche Informationen zur Fahrzeugnutzung (optional)",
+        widget=forms.Textarea(
+            attrs={
+                "class": "form-control vehicle-field",
+                "rows": "2",
+                "placeholder": "z.B. Kundentermin, Wartung, etc...",
+            }
+        ),
+    )
 
     class Meta:
         model = TimeEntry
@@ -103,6 +164,23 @@ class TimeEntryForm(forms.ModelForm):
         # Set default date to today
         if not self.instance.pk:
             self.fields["date"].initial = timezone.now().date()
+
+            # Set default vehicle if user has one configured
+            if self.user and self.user.default_vehicle:
+                self.fields["vehicle"].initial = self.user.default_vehicle
+
+        # For editing existing entries, populate vehicle usage data
+        if self.instance.pk:
+            try:
+                vehicle_usage = VehicleUsage.objects.get(time_entry=self.instance)
+                self.fields["vehicle"].initial = vehicle_usage.vehicle
+                self.fields["no_vehicle_used"].initial = vehicle_usage.no_vehicle_used
+                self.fields["start_kilometers"].initial = vehicle_usage.start_kilometers
+                self.fields["end_kilometers"].initial = vehicle_usage.end_kilometers
+                self.fields["vehicle_notes"].initial = vehicle_usage.notes
+            except VehicleUsage.DoesNotExist:
+                # No vehicle usage record exists for this time entry
+                pass
 
     def clean_date(self):
         """Validate that date is not in the future."""
@@ -179,8 +257,110 @@ class TimeEntryForm(forms.ModelForm):
                     f"Für das Datum {date} existiert bereits ein Zeiteintrag."
                 )
 
+        # US-C08: Vehicle usage validation
+        self._validate_vehicle_usage(cleaned_data)
+
         return cleaned_data
 
     def get_warnings(self):
         """Get list of validation warnings (non-blocking)."""
         return getattr(self, "_warnings", [])
+
+    def _validate_vehicle_usage(self, cleaned_data):
+        """Validate vehicle usage fields according to business rules."""
+        vehicle = cleaned_data.get("vehicle")
+        no_vehicle_used = cleaned_data.get("no_vehicle_used", False)
+        start_kilometers = cleaned_data.get("start_kilometers")
+        end_kilometers = cleaned_data.get("end_kilometers")
+
+        # Clear vehicle-related fields if no vehicle is used
+        if no_vehicle_used:
+            cleaned_data["vehicle"] = None
+            cleaned_data["start_kilometers"] = None
+            cleaned_data["end_kilometers"] = None
+            return
+
+        # If vehicle is selected, validate mileage requirements
+        if vehicle:
+            if start_kilometers is None or end_kilometers is None:
+                raise ValidationError(
+                    "Bei Fahrzeugnutzung müssen Anfangs- und "
+                    "End-Kilometer angegeben werden."
+                )
+
+            # Validate mileage logic
+            if end_kilometers < start_kilometers:
+                raise ValidationError(
+                    {
+                        "end_kilometers": (
+                            "End-Kilometer muss größer als " "Anfangs-Kilometer sein."
+                        )
+                    }
+                )
+
+            # Check for reasonable daily distance
+            daily_distance = end_kilometers - start_kilometers
+            if daily_distance > 500:
+                if not hasattr(self, "_warnings"):
+                    self._warnings = []
+                self._warnings.append(
+                    f"Achtung: Sehr hohe Tageskilometer ({daily_distance}km). "
+                    "Bitte prüfen Sie die Kilometerangaben."
+                )
+
+            # Warn for very low mileage (might indicate input error)
+            if daily_distance == 0:
+                if not hasattr(self, "_warnings"):
+                    self._warnings = []
+                self._warnings.append(
+                    "Hinweis: Keine Kilometer gefahren (0km). "
+                    "Ist dies korrekt oder haben Sie vergessen die "
+                    "Kilometerangaben anzupassen?"
+                )
+
+    def save(self, commit=True):
+        """Save the time entry and create/update associated vehicle usage."""
+        # Set required fields if not already set
+        time_entry = super().save(commit=False)
+
+        if not time_entry.user_id:
+            time_entry.user = self.user
+        if not time_entry.created_by_id:
+            time_entry.created_by = self.user
+        time_entry.updated_by = self.user
+
+        if commit:
+            time_entry.save()
+            # Handle vehicle usage data
+            self._save_vehicle_usage(time_entry)
+
+        return time_entry
+
+    def _save_vehicle_usage(self, time_entry):
+        """Create or update VehicleUsage record for the time entry."""
+        vehicle = self.cleaned_data.get("vehicle")
+        no_vehicle_used = self.cleaned_data.get("no_vehicle_used", False)
+        start_kilometers = self.cleaned_data.get("start_kilometers")
+        end_kilometers = self.cleaned_data.get("end_kilometers")
+        vehicle_notes = self.cleaned_data.get("vehicle_notes", "")
+
+        # Get or create vehicle usage record
+        vehicle_usage, created = VehicleUsage.objects.get_or_create(
+            time_entry=time_entry,
+            defaults={
+                "vehicle": vehicle,
+                "start_kilometers": start_kilometers,
+                "end_kilometers": end_kilometers,
+                "no_vehicle_used": no_vehicle_used,
+                "notes": vehicle_notes,
+            },
+        )
+
+        # Update existing record if not created
+        if not created:
+            vehicle_usage.vehicle = vehicle
+            vehicle_usage.start_kilometers = start_kilometers
+            vehicle_usage.end_kilometers = end_kilometers
+            vehicle_usage.no_vehicle_used = no_vehicle_used
+            vehicle_usage.notes = vehicle_notes
+            vehicle_usage.save()

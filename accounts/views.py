@@ -145,14 +145,98 @@ def create_employee_view(request):
 def time_entry_list(request):
     """
     List view for employee's time entries.
-    Shows all time entries for the current user, with basic filtering.
+    Shows all time entries for the current user, with filtering options.
     """
-    # Get user's time entries, ordered by date (newest first)
-    time_entries = TimeEntry.objects.filter(user=request.user).order_by("-date")
+    # Get user's time entries with vehicle usage data
+    time_entries = (
+        TimeEntry.objects.filter(user=request.user)
+        .select_related("user")
+        .prefetch_related("vehicleusage__vehicle")
+    )
+
+    # Apply vehicle filtering
+    vehicle_filter = request.GET.get("vehicle")
+    if vehicle_filter:
+        if vehicle_filter == "no_vehicle":
+            # Filter for entries where no vehicle was used
+            time_entries = time_entries.filter(vehicleusage__no_vehicle_used=True)
+        elif vehicle_filter == "with_vehicle":
+            # Filter for entries with any vehicle
+            time_entries = time_entries.filter(
+                vehicleusage__vehicle__isnull=False, vehicleusage__no_vehicle_used=False
+            )
+        else:
+            # Filter for specific vehicle ID
+            try:
+                vehicle_id = int(vehicle_filter)
+                time_entries = time_entries.filter(vehicleusage__vehicle_id=vehicle_id)
+            except (ValueError, TypeError):
+                pass  # Invalid vehicle ID, ignore filter
+
+    # Apply date filtering
+    date_from = request.GET.get("date_from")
+    date_to = request.GET.get("date_to")
+    if date_from:
+        try:
+            from datetime import datetime
+
+            parsed_date = datetime.strptime(date_from, "%Y-%m-%d").date()
+            time_entries = time_entries.filter(date__gte=parsed_date)
+        except ValueError:
+            pass  # Invalid date format, ignore filter
+
+    if date_to:
+        try:
+            from datetime import datetime
+
+            parsed_date = datetime.strptime(date_to, "%Y-%m-%d").date()
+            time_entries = time_entries.filter(date__lte=parsed_date)
+        except ValueError:
+            pass  # Invalid date format, ignore filter
+
+    # Order by date (newest first)
+    time_entries = time_entries.order_by("-date")
+
+    # Get available vehicles for filter dropdown
+    from .models import Vehicle
+
+    available_vehicles = Vehicle.objects.filter(is_active=True).order_by(
+        "license_plate"
+    )
+
+    # Calculate vehicle usage statistics
+    all_entries = TimeEntry.objects.filter(user=request.user).prefetch_related(
+        "vehicleusage__vehicle"
+    )
+    vehicle_stats = {
+        "total_entries": all_entries.count(),
+        "with_vehicle": all_entries.filter(
+            vehicleusage__vehicle__isnull=False, vehicleusage__no_vehicle_used=False
+        ).count(),
+        "no_vehicle": all_entries.filter(vehicleusage__no_vehicle_used=True).count(),
+        "unknown": all_entries.filter(vehicleusage__isnull=True).count(),
+        "total_kilometers": 0,
+    }
+
+    # Calculate total kilometers driven
+    for entry in all_entries:
+        if (
+            hasattr(entry, "vehicleusage")
+            and entry.vehicleusage
+            and entry.vehicleusage.daily_distance
+        ):
+            vehicle_stats["total_kilometers"] += entry.vehicleusage.daily_distance
 
     context = {
         "time_entries": time_entries,
         "title": "Meine Zeiteinträge",
+        "available_vehicles": available_vehicles,
+        "vehicle_stats": vehicle_stats,
+        "current_filters": {
+            "vehicle": vehicle_filter,
+            "date_from": date_from,
+            "date_to": date_to,
+        },
     }
     return render(request, "accounts/time_entry_list.html", context)
 
