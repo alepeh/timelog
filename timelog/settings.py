@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "storages",  # django-storages for S3 support
     "axes",
     "accounts",
 ]
@@ -140,6 +141,58 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = "static/"
+
+# File Storage Configuration for US-C09 Fuel Receipt Tracking
+# S3-compliant storage for receipt images
+
+# Check if S3 configuration is provided via environment variables
+USE_S3_STORAGE = bool(os.environ.get("AWS_S3_BUCKET_NAME"))
+
+if USE_S3_STORAGE:
+    # Production: Use S3-compliant storage (AWS S3, MinIO, DigitalOcean Spaces, etc.)
+
+    # AWS S3 Settings
+    AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
+    AWS_STORAGE_BUCKET_NAME = os.environ.get("AWS_S3_BUCKET_NAME")
+    AWS_S3_REGION_NAME = os.environ.get("AWS_S3_REGION_NAME", "eu-central-1")
+
+    # Custom S3 endpoint (for MinIO, DigitalOcean Spaces, etc.)
+    AWS_S3_ENDPOINT_URL = os.environ.get("AWS_S3_ENDPOINT_URL")  # Optional
+
+    # S3 Configuration
+    AWS_S3_CUSTOM_DOMAIN = os.environ.get("AWS_S3_CUSTOM_DOMAIN")  # Optional CDN
+    AWS_DEFAULT_ACL = "private"  # Keep receipt images private
+    AWS_S3_OBJECT_PARAMETERS = {
+        "CacheControl": "max-age=86400",  # Cache for 24 hours
+    }
+    AWS_S3_FILE_OVERWRITE = False  # Don't overwrite files with same name
+    AWS_S3_SIGNATURE_VERSION = "s3v4"
+
+    # Use S3 for media files (receipt images)
+    DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
+
+    # Media files URL configuration
+    if AWS_S3_CUSTOM_DOMAIN:
+        MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/media/"
+    else:
+        MEDIA_URL = (
+            f"https://{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}"
+            ".amazonaws.com/media/"
+        )
+
+else:
+    # Development: Use local file storage
+    MEDIA_URL = "/media/"
+    MEDIA_ROOT = BASE_DIR / "media"
+
+# File Upload Settings
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
+
+# Allowed file types for receipt images
+ALLOWED_RECEIPT_EXTENSIONS = [".jpg", ".jpeg", ".png", ".pdf"]
+MAX_RECEIPT_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

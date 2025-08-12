@@ -9,8 +9,8 @@ from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_http_methods
 
 from .calendar_utils import get_current_month_calendar, get_month_calendar
-from .forms import CreateEmployeeForm, TimeEntryForm
-from .models import TimeEntry, User
+from .forms import CreateEmployeeForm, TimeEntryForm, FuelReceiptForm
+from .models import TimeEntry, User, FuelReceipt, Vehicle
 from .permissions import backoffice_required
 
 
@@ -389,3 +389,213 @@ def time_entry_calendar(request):
         "weeks": calendar_data.get_weeks(),
     }
     return render(request, "accounts/time_entry_calendar.html", context)
+
+
+# Fuel Receipt Views (US-C09)
+
+
+@login_required
+@require_http_methods(["GET"])
+def fuel_receipt_list(request):
+    """
+    List view for employee's fuel receipts.
+    Shows all receipts for the current user with filtering options.
+    """
+    # Get user's fuel receipts
+    receipts = FuelReceipt.objects.filter(employee=request.user).select_related(
+        "vehicle", "approved_by"
+    )
+
+    # Apply filtering
+    status_filter = request.GET.get("status")
+    if status_filter:
+        receipts = receipts.filter(status=status_filter)
+
+    vehicle_filter = request.GET.get("vehicle")
+    if vehicle_filter:
+        try:
+            vehicle_id = int(vehicle_filter)
+            receipts = receipts.filter(vehicle_id=vehicle_id)
+        except (ValueError, TypeError):
+            pass  # Invalid vehicle ID, ignore filter
+
+    # Order by receipt date (newest first)
+    receipts = receipts.order_by("-receipt_date")
+
+    # Get available vehicles and status choices for filters
+    available_vehicles = Vehicle.objects.filter(
+        is_active=True, fuelreceipt__employee=request.user
+    ).distinct()
+
+    context = {
+        "receipts": receipts,
+        "title": "Meine Tankbelege",
+        "available_vehicles": available_vehicles,
+        "status_choices": FuelReceipt.STATUS_CHOICES,
+        "current_filters": {
+            "status": status_filter,
+            "vehicle": vehicle_filter,
+        },
+    }
+    return render(request, "accounts/fuel_receipt_list.html", context)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+@csrf_protect
+def fuel_receipt_create(request):
+    """
+    Create view for new fuel receipts.
+    Implements US-C09: Fuel Receipt Tracking with S3 Storage.
+    """
+    if request.method == "POST":
+        form = FuelReceiptForm(request.POST, request.FILES, user=request.user)
+        if form.is_valid():
+            # Check for warnings before saving
+            warnings = form.get_warnings()
+            if warnings:
+                # Display warnings but allow saving
+                for warning in warnings:
+                    messages.warning(request, warning)
+
+            receipt = form.save()
+
+            messages.success(
+                request,
+                f"Tankbeleg für {receipt.vehicle.license_plate} wurde erfolgreich eingereicht. "
+                f"Status: {receipt.get_status_display()}",
+            )
+            return redirect("accounts:fuel_receipt_list")
+    else:
+        form = FuelReceiptForm(user=request.user)
+
+    context = {
+        "form": form,
+        "title": "Neuer Tankbeleg",
+        "submit_text": "Beleg einreichen",
+    }
+    return render(request, "accounts/fuel_receipt_form.html", context)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+@csrf_protect
+def fuel_receipt_edit(request, receipt_id):
+    """
+    Edit view for existing fuel receipts.
+    Only allows users to edit their own receipts within 24 hours and pending status.
+    """
+    try:
+        receipt = FuelReceipt.objects.get(pk=receipt_id, employee=request.user)
+    except FuelReceipt.DoesNotExist:
+        messages.error(request, "Tankbeleg nicht gefunden oder keine Berechtigung.")
+        return redirect("accounts:fuel_receipt_list")
+
+    # Check if receipt can be edited
+    if not receipt.can_be_edited:
+        if receipt.status != "pending":
+            messages.error(
+                request,
+                f"Tankbeleg kann nicht bearbeitet werden. "
+                f"Status: {receipt.get_status_display()}",
+            )
+        else:
+            messages.error(
+                request,
+                "Tankbeleg kann nur innerhalb von 24 Stunden nach "
+                "der Einreichung bearbeitet werden.",
+            )
+        return redirect("accounts:fuel_receipt_detail", receipt_id=receipt.id)
+
+    if request.method == "POST":
+        form = FuelReceiptForm(
+            request.POST, request.FILES, instance=receipt, user=request.user
+        )
+        if form.is_valid():
+            # Check for warnings before saving
+            warnings = form.get_warnings()
+            if warnings:
+                # Display warnings but allow saving
+                for warning in warnings:
+                    messages.warning(request, warning)
+
+            receipt = form.save()
+
+            messages.success(
+                request,
+                f"Tankbeleg für {receipt.vehicle.license_plate} "
+                f"wurde erfolgreich aktualisiert.",
+            )
+            return redirect("accounts:fuel_receipt_detail", receipt_id=receipt.id)
+    else:
+        form = FuelReceiptForm(instance=receipt, user=request.user)
+
+    context = {
+        "form": form,
+        "receipt": receipt,
+        "title": f"Tankbeleg bearbeiten - {receipt.vehicle.license_plate}",
+        "submit_text": "Änderungen speichern",
+    }
+    return render(request, "accounts/fuel_receipt_form.html", context)
+
+
+@login_required
+@require_http_methods(["GET"])
+def fuel_receipt_detail(request, receipt_id):
+    """
+    Detail view for fuel receipts.
+    Shows receipt information with secure image access.
+    """
+    try:
+        receipt = FuelReceipt.objects.select_related(
+            "vehicle", "employee", "approved_by"
+        ).get(pk=receipt_id, employee=request.user)
+    except FuelReceipt.DoesNotExist:
+        messages.error(request, "Tankbeleg nicht gefunden oder keine Berechtigung.")
+        return redirect("accounts:fuel_receipt_list")
+
+    context = {
+        "receipt": receipt,
+        "title": f"Tankbeleg - {receipt.vehicle.license_plate}",
+        "can_edit": receipt.can_be_edited,
+    }
+    return render(request, "accounts/fuel_receipt_detail.html", context)
+
+
+@login_required
+@require_http_methods(["POST"])
+@csrf_protect
+def fuel_receipt_delete(request, receipt_id):
+    """
+    Delete view for fuel receipts.
+    Only allows users to delete their own receipts if they're pending and within edit window.
+    """
+    try:
+        receipt = FuelReceipt.objects.get(pk=receipt_id, employee=request.user)
+    except FuelReceipt.DoesNotExist:
+        messages.error(request, "Tankbeleg nicht gefunden oder keine Berechtigung.")
+        return redirect("accounts:fuel_receipt_list")
+
+    # Check if receipt can be deleted
+    if not receipt.can_be_edited:
+        if receipt.status != "pending":
+            messages.error(
+                request,
+                f"Tankbeleg kann nicht gelöscht werden. "
+                f"Status: {receipt.get_status_display()}",
+            )
+        else:
+            messages.error(
+                request,
+                "Tankbeleg kann nur innerhalb von 24 Stunden nach "
+                "der Einreichung gelöscht werden.",
+            )
+        return redirect("accounts:fuel_receipt_detail", receipt_id=receipt.id)
+
+    vehicle_plate = receipt.vehicle.license_plate
+    receipt.delete()
+    messages.success(
+        request, f"Tankbeleg für {vehicle_plate} wurde erfolgreich gelöscht."
+    )
+
+    return redirect("accounts:fuel_receipt_list")

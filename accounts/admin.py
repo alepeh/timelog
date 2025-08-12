@@ -8,6 +8,7 @@ from django.core.mail import send_mail
 
 from .models import (
     EmployeeNonWorkingDay,
+    FuelReceipt,
     PublicHoliday,
     TimeEntry,
     User,
@@ -952,3 +953,276 @@ class VehicleUsageAdmin(admin.ModelAdmin):
                 del actions["export_mileage_report"]
 
         return actions
+
+
+@admin.register(FuelReceipt)
+class FuelReceiptAdmin(admin.ModelAdmin):
+    """
+    Admin interface for FuelReceipt model.
+    Provides comprehensive management of fuel receipts with approval workflow.
+    Implements US-C09: Fuel Receipt Tracking with S3 Storage.
+    """
+
+    list_display = [
+        "receipt_date",
+        "employee",
+        "vehicle",
+        "odometer_reading",
+        "fuel_amount_liters",
+        "total_cost",
+        "status",
+        "can_be_edited",
+        "days_since_upload",
+    ]
+
+    list_filter = [
+        "status",
+        "vehicle__fuel_type",
+        "receipt_date",
+        "fuel_purchase_date",
+        ("vehicle", admin.RelatedOnlyFieldListFilter),
+        ("employee", admin.RelatedOnlyFieldListFilter),
+    ]
+
+    search_fields = [
+        "employee__username",
+        "employee__first_name",
+        "employee__last_name",
+        "vehicle__license_plate",
+        "vehicle__make",
+        "vehicle__model",
+        "gas_station",
+        "notes",
+    ]
+
+    readonly_fields = [
+        "receipt_date",
+        "created_at",
+        "updated_at",
+        "can_be_edited",
+        "days_since_upload",
+        "receipt_image_preview",
+    ]
+
+    fieldsets = [
+        (
+            "Grunddaten",
+            {
+                "fields": [
+                    "employee",
+                    "vehicle",
+                    "odometer_reading",
+                    "receipt_image",
+                    "receipt_image_preview",
+                ]
+            },
+        ),
+        (
+            "Tankdaten",
+            {
+                "fields": [
+                    "fuel_amount_liters",
+                    "total_cost",
+                    "gas_station",
+                    "fuel_purchase_date",
+                    "notes",
+                ]
+            },
+        ),
+        (
+            "Status & Genehmigung",
+            {
+                "fields": [
+                    "status",
+                    "approved_by",
+                    "rejection_reason",
+                ]
+            },
+        ),
+        (
+            "Zeitstempel",
+            {
+                "fields": [
+                    "receipt_date",
+                    "created_at",
+                    "updated_at",
+                    "can_be_edited",
+                    "days_since_upload",
+                ],
+                "classes": ["collapse"],
+            },
+        ),
+    ]
+
+    actions = [
+        "approve_receipts",
+        "reject_receipts",
+        "export_fuel_receipts_csv",
+    ]
+
+    def receipt_image_preview(self, obj):
+        """Display receipt image preview in admin."""
+        if obj.receipt_image:
+            return f'<img src="{obj.receipt_image.url}" style="max-width: 200px; max-height: 200px;" />'
+        return "Kein Bild"
+
+    receipt_image_preview.allow_tags = True
+    receipt_image_preview.short_description = "Beleg-Vorschau"
+
+    def approve_receipts(self, request, queryset):
+        """Bulk approve selected receipts."""
+        pending_receipts = queryset.filter(status="pending")
+        count = 0
+
+        for receipt in pending_receipts:
+            try:
+                receipt.approve(request.user)
+                count += 1
+            except Exception as e:
+                self.message_user(
+                    request,
+                    f"Fehler beim Genehmigen von Beleg {receipt.id}: {e}",
+                    level="error",
+                )
+
+        if count > 0:
+            self.message_user(
+                request,
+                f"{count} Tankbeleg(e) erfolgreich genehmigt.",
+                level="success",
+            )
+
+    approve_receipts.short_description = "Ausgewählte Belege genehmigen"
+
+    def reject_receipts(self, request, queryset):
+        """Bulk reject selected receipts."""
+        pending_receipts = queryset.filter(status="pending")
+        count = 0
+
+        for receipt in pending_receipts:
+            try:
+                receipt.reject(request.user, "Massenablehnung durch Administrator")
+                count += 1
+            except Exception as e:
+                self.message_user(
+                    request,
+                    f"Fehler beim Ablehnen von Beleg {receipt.id}: {e}",
+                    level="error",
+                )
+
+        if count > 0:
+            self.message_user(
+                request,
+                f"{count} Tankbeleg(e) erfolgreich abgelehnt.",
+                level="success",
+            )
+
+    reject_receipts.short_description = "Ausgewählte Belege ablehnen"
+
+    def export_fuel_receipts_csv(self, request, queryset):
+        """Export selected fuel receipts to CSV."""
+        import csv
+        from django.http import HttpResponse
+
+        response = HttpResponse(content_type="text/csv")
+        response["Content-Disposition"] = 'attachment; filename="tankbelege.csv"'
+
+        writer = csv.writer(response)
+        writer.writerow([
+            "Datum",
+            "Mitarbeiter",
+            "Fahrzeug",
+            "Kilometerstand",
+            "Kraftstoff (L)",
+            "Kosten (€)",
+            "Tankstelle",
+            "Tankdatum",
+            "Status",
+            "Genehmigt von",
+            "Notizen",
+        ])
+
+        for receipt in queryset.select_related("employee", "vehicle", "approved_by"):
+            writer.writerow([
+                receipt.receipt_date.strftime("%d.%m.%Y %H:%M"),
+                receipt.employee.get_full_name(),
+                f"{receipt.vehicle.license_plate} ({receipt.vehicle.make} {receipt.vehicle.model})",
+                receipt.odometer_reading,
+                receipt.fuel_amount_liters or "",
+                receipt.total_cost or "",
+                receipt.gas_station or "",
+                receipt.fuel_purchase_date.strftime("%d.%m.%Y") if receipt.fuel_purchase_date else "",
+                receipt.get_status_display(),
+                receipt.approved_by.get_full_name() if receipt.approved_by else "",
+                receipt.notes or "",
+            ])
+
+        return response
+
+    export_fuel_receipts_csv.short_description = "Ausgewählte Belege als CSV exportieren"
+
+    def has_add_permission(self, request):
+        """Only employees can add fuel receipts (via frontend)."""
+        return False  # Force users to use the frontend form
+
+    def has_change_permission(self, request, obj=None):
+        """Allow backoffice to modify, restrict employees to view only."""
+        if not super().has_change_permission(request, obj):
+            return False
+
+        if not request.user.is_authenticated:
+            return False
+
+        # Only backoffice can change fuel receipts in admin
+        return request.user.is_backoffice
+
+    def has_delete_permission(self, request, obj=None):
+        """Only backoffice can delete fuel receipts."""
+        return (
+            super().has_delete_permission(request, obj)
+            and request.user.is_authenticated
+            and request.user.is_backoffice
+        )
+
+    def has_view_permission(self, request, obj=None):
+        """All authenticated users can view fuel receipts (with filtering)."""
+        return (
+            super().has_view_permission(request, obj) and request.user.is_authenticated
+        )
+
+    def get_queryset(self, request):
+        """Filter queryset based on user role."""
+        queryset = super().get_queryset(request).select_related(
+            "employee", "vehicle", "approved_by"
+        )
+
+        if request.user.is_superuser or request.user.is_backoffice:
+            return queryset
+
+        # Employees can only see their own fuel receipts
+        if request.user.is_employee:
+            return queryset.filter(employee=request.user)
+
+        # Default: no access
+        return queryset.none()
+
+    def get_actions(self, request):
+        """Filter available actions based on user role."""
+        actions = super().get_actions(request)
+
+        # Only backoffice users can perform bulk operations
+        if not request.user.is_backoffice:
+            actions_to_remove = ["approve_receipts", "reject_receipts", "export_fuel_receipts_csv"]
+            for action in actions_to_remove:
+                if action in actions:
+                    del actions[action]
+
+        return actions
+
+    def save_model(self, request, obj, form, change):
+        """Automatically set approved_by when status changes to approved/rejected."""
+        if change and "status" in form.changed_data:
+            if obj.status in ["approved", "rejected"]:
+                obj.approved_by = request.user
+
+        super().save_model(request, obj, form, change)

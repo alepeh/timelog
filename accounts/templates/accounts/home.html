@@ -147,6 +147,7 @@
                     <a href="{% url 'accounts:time_entry_calendar' %}" class="btn btn-primary">Kalender</a>
                     <a href="{% url 'accounts:time_entry_list' %}" class="btn btn-secondary">Listenansicht</a>
                     <a href="{% url 'accounts:time_entry_create' %}" class="btn btn-success">Neuer Zeiteintrag</a>
+                    <a href="{% url 'accounts:fuel_receipt_list' %}" class="btn btn-success">⛽ Tankbelege</a>
                 {% endif %}
                 <form method="post" action="{% url 'accounts:logout' %}" class="logout-form">
                     {% csrf_token %}
@@ -169,6 +170,7 @@
                 <li>Einfache Zeiterfassung mit Start- und Endzeiten</li>
                 <li>Pausenzeiten und Mittagspausen erfassen</li>
                 <li>Verschmutzungsgrade für verschiedene Arbeitsbereiche</li>
+                <li>⛽ Tankbelege und Fahrzeugnutzung dokumentieren</li>
                 <li>Übersichtliche Berichte und Auswertungen</li>
                 <li>Benutzerfreundliche Verwaltung</li>
                 <li>Sichere Datenspeicherung</li>
