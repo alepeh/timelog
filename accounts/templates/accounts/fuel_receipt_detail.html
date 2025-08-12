@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - Timelog</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .header {
+            background: #007bff;
+            color: white;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 1.5em;
+        }
+        .user-info {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+        .content {
+            padding: 30px;
+        }
+        .actions {
+            margin-bottom: 30px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #0056b3;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background-color: #545b62;
+        }
+        .btn-warning {
+            background-color: #ffc107;
+            color: #212529;
+        }
+        .btn-warning:hover {
+            background-color: #e0a800;
+        }
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+        }
+        .btn-success:hover {
+            background-color: #218838;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        .btn-danger:hover {
+            background-color: #c82333;
+        }
+        .messages {
+            margin-bottom: 20px;
+        }
+        .alert {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+        }
+        .alert-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .alert-error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .alert-warning {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .receipt-grid {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        .detail-section {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+        .detail-section h3 {
+            margin: 0 0 20px 0;
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .detail-row {
+            display: grid;
+            grid-template-columns: 140px 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+            align-items: start;
+        }
+        .detail-label {
+            font-weight: 600;
+            color: #555;
+        }
+        .detail-value {
+            color: #333;
+        }
+        .detail-value.vehicle-info {
+            font-weight: 600;
+            color: #007bff;
+        }
+        .status-badge {
+            padding: 6px 16px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            display: inline-block;
+        }
+        .status-pending {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .status-approved {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status-rejected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .receipt-image-section {
+            text-align: center;
+        }
+        .receipt-image {
+            max-width: 100%;
+            max-height: 500px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .no-image {
+            background: #f8f9fa;
+            border: 2px dashed #dee2e6;
+            border-radius: 8px;
+            padding: 60px 20px;
+            color: #666;
+            font-size: 1.1em;
+        }
+        .cost-breakdown {
+            background: #e9f7ef;
+            border: 1px solid #c3e6cb;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+        .cost-breakdown h4 {
+            margin: 0 0 10px 0;
+            color: #155724;
+        }
+        .cost-detail {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+        .cost-total {
+            border-top: 1px solid #c3e6cb;
+            padding-top: 10px;
+            margin-top: 10px;
+            font-weight: 600;
+        }
+        .notes-section {
+            margin-top: 20px;
+            padding: 20px;
+            background: #fff;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+        }
+        .notes-section h4 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        .notes-content {
+            color: #666;
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+        .approval-info {
+            background: #f8f9fa;
+            border-left: 4px solid #007bff;
+            padding: 15px;
+            margin-top: 20px;
+        }
+        .approval-info.approved {
+            border-left-color: #28a745;
+            background: #e9f7ef;
+        }
+        .approval-info.rejected {
+            border-left-color: #dc3545;
+            background: #f8e6e7;
+        }
+        .nav-links {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #dee2e6;
+            text-align: center;
+        }
+        .nav-links a {
+            color: #007bff;
+            text-decoration: none;
+            margin: 0 10px;
+        }
+        .nav-links a:hover {
+            text-decoration: underline;
+        }
+        
+        /* Mobile Optimizations */
+        @media (max-width: 768px) {
+            .content {
+                padding: 20px;
+            }
+            .header {
+                flex-direction: column;
+                text-align: center;
+                gap: 10px;
+            }
+            .receipt-grid {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+            .actions {
+                flex-direction: column;
+                align-items: center;
+            }
+            .actions .btn {
+                width: 100%;
+                max-width: 250px;
+            }
+            .detail-row {
+                grid-template-columns: 1fr;
+                gap: 5px;
+            }
+            .detail-label {
+                font-size: 14px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            body {
+                padding: 10px;
+            }
+            .content {
+                padding: 15px;
+            }
+            .detail-section {
+                padding: 15px;
+            }
+        }
+
+        /* Print Styles */
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+            .container {
+                box-shadow: none;
+                border-radius: 0;
+            }
+            .header {
+                background: #007bff !important;
+                color: white !important;
+                -webkit-print-color-adjust: exact;
+            }
+            .actions {
+                display: none;
+            }
+            .nav-links {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⛽ {{ title }}</h1>
+            <div class="user-info">
+                {{ user.get_full_name|default:user.username }} ({{ user.get_role_display }})
+            </div>
+        </div>
+        
+        <div class="content">
+            {% if messages %}
+                <div class="messages">
+                    {% for message in messages %}
+                        <div class="alert alert-{% if message.tags == 'error' %}error{% else %}{{ message.tags }}{% endif %}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            <div class="actions">
+                {% if receipt.can_be_edited %}
+                    <a href="{% url 'accounts:fuel_receipt_edit' receipt.id %}" class="btn btn-warning">
+                        ✏️ Beleg bearbeiten
+                    </a>
+                {% endif %}
+                
+                {% if user.is_backoffice and receipt.status == 'pending' %}
+                    <form method="post" action="{% url 'accounts:fuel_receipt_approve' receipt.id %}" style="display: inline;">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-success" onclick="return confirm('Möchten Sie diesen Beleg wirklich genehmigen?')">
+                            ✅ Genehmigen
+                        </button>
+                    </form>
+                    
+                    <form method="post" action="{% url 'accounts:fuel_receipt_reject' receipt.id %}" style="display: inline;">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-danger" onclick="return confirm('Möchten Sie diesen Beleg wirklich ablehnen?')">
+                            ❌ Ablehnen
+                        </button>
+                    </form>
+                {% endif %}
+                
+                <a href="{% url 'accounts:fuel_receipt_list' %}" class="btn btn-secondary">
+                    ← Zurück zur Liste
+                </a>
+                
+                <button onclick="window.print()" class="btn btn-secondary">
+                    🖨️ Drucken
+                </button>
+            </div>
+
+            <div class="receipt-grid">
+                <!-- Receipt Details -->
+                <div>
+                    <div class="detail-section">
+                        <h3>📋 Beleg-Details</h3>
+                        
+                        <div class="detail-row">
+                            <div class="detail-label">Datum & Zeit:</div>
+                            <div class="detail-value">
+                                {{ receipt.receipt_date|date:"d.m.Y H:i" }} Uhr
+                            </div>
+                        </div>
+                        
+                        <div class="detail-row">
+                            <div class="detail-label">Mitarbeiter:</div>
+                            <div class="detail-value">
+                                {{ receipt.employee.get_full_name }}
+                            </div>
+                        </div>
+                        
+                        <div class="detail-row">
+                            <div class="detail-label">Fahrzeug:</div>
+                            <div class="detail-value vehicle-info">
+                                {{ receipt.vehicle.license_plate }}<br>
+                                <small>{{ receipt.vehicle.make }} {{ receipt.vehicle.model }} ({{ receipt.vehicle.year }})</small>
+                            </div>
+                        </div>
+                        
+                        <div class="detail-row">
+                            <div class="detail-label">Kilometerstand:</div>
+                            <div class="detail-value">
+                                {{ receipt.odometer_reading|floatformat:0 }} km
+                            </div>
+                        </div>
+                        
+                        <div class="detail-row">
+                            <div class="detail-label">Status:</div>
+                            <div class="detail-value">
+                                <span class="status-badge status-{{ receipt.status }}">
+                                    {% if receipt.status == 'pending' %}⏳{% elif receipt.status == 'approved' %}✅{% else %}❌{% endif %}
+                                    {{ receipt.get_status_display }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {% if receipt.fuel_amount_liters or receipt.total_cost or receipt.gas_station %}
+                        <div class="detail-section">
+                            <h3>⛽ Tankdaten</h3>
+                            
+                            {% if receipt.fuel_amount_liters %}
+                                <div class="detail-row">
+                                    <div class="detail-label">Kraftstoffmenge:</div>
+                                    <div class="detail-value">
+                                        {{ receipt.fuel_amount_liters|floatformat:2 }} Liter
+                                    </div>
+                                </div>
+                            {% endif %}
+                            
+                            {% if receipt.total_cost %}
+                                <div class="detail-row">
+                                    <div class="detail-label">Gesamtkosten:</div>
+                                    <div class="detail-value">
+                                        {{ receipt.total_cost|floatformat:2 }} €
+                                    </div>
+                                </div>
+                            {% endif %}
+                            
+                            {% if receipt.gas_station %}
+                                <div class="detail-row">
+                                    <div class="detail-label">Tankstelle:</div>
+                                    <div class="detail-value">
+                                        {{ receipt.gas_station }}
+                                    </div>
+                                </div>
+                            {% endif %}
+                            
+                            {% if receipt.fuel_purchase_date %}
+                                <div class="detail-row">
+                                    <div class="detail-label">Tankdatum:</div>
+                                    <div class="detail-value">
+                                        {{ receipt.fuel_purchase_date|date:"d.m.Y" }}
+                                    </div>
+                                </div>
+                            {% endif %}
+                            
+                            {% if receipt.fuel_amount_liters and receipt.total_cost %}
+                                <div class="cost-breakdown">
+                                    <h4>💰 Kostenaufschlüsselung</h4>
+                                    <div class="cost-detail">
+                                        <span>Preis pro Liter:</span>
+                                        <span id="cost-per-liter"></span>
+                                    </div>
+                                    <div class="cost-detail">
+                                        <span>Kraftstoffmenge:</span>
+                                        <span>{{ receipt.fuel_amount_liters|floatformat:2 }} L</span>
+                                    </div>
+                                    <div class="cost-detail cost-total">
+                                        <span>Gesamtsumme:</span>
+                                        <span>{{ receipt.total_cost|floatformat:2 }} €</span>
+                                    </div>
+                                </div>
+                            {% endif %}
+                        </div>
+                    {% endif %}
+
+                    {% if receipt.status != 'pending' %}
+                        <div class="approval-info {{ receipt.status }}">
+                            <h4>
+                                {% if receipt.status == 'approved' %}
+                                    ✅ Genehmigungsinformationen
+                                {% else %}
+                                    ❌ Ablehnungsinformationen
+                                {% endif %}
+                            </h4>
+                            {% if receipt.approved_by %}
+                                <p><strong>{% if receipt.status == 'approved' %}Genehmigt{% else %}Abgelehnt{% endif %} von:</strong> {{ receipt.approved_by.get_full_name }}</p>
+                            {% endif %}
+                            {% if receipt.rejection_reason %}
+                                <p><strong>Grund der Ablehnung:</strong> {{ receipt.rejection_reason }}</p>
+                            {% endif %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <!-- Receipt Image -->
+                <div class="receipt-image-section">
+                    <div class="detail-section">
+                        <h3>📸 Beleg-Bild</h3>
+                        {% if receipt.receipt_image %}
+                            <img src="{{ receipt.receipt_image.url }}" alt="Tankbeleg" class="receipt-image">
+                            <div style="margin-top: 15px;">
+                                <a href="{{ receipt.receipt_image.url }}" target="_blank" class="btn btn-secondary">
+                                    🔍 Vollbild anzeigen
+                                </a>
+                            </div>
+                        {% else %}
+                            <div class="no-image">
+                                📄<br>
+                                Kein Bild verfügbar
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            {% if receipt.notes %}
+                <div class="notes-section">
+                    <h4>📝 Notizen</h4>
+                    <div class="notes-content">{{ receipt.notes }}</div>
+                </div>
+            {% endif %}
+
+            <div class="nav-links">
+                <a href="{% url 'home' %}">Startseite</a> |
+                <a href="{% url 'accounts:fuel_receipt_list' %}">Alle Tankbelege</a> |
+                <a href="{% url 'accounts:time_entry_list' %}">Zeiteinträge</a> |
+                <a href="{% url 'admin:index' %}">Admin</a> |
+                <a href="{% url 'accounts:logout' %}" onclick="document.getElementById('logout-form').submit(); return false;">Abmelden</a>
+                
+                <form id="logout-form" method="post" action="{% url 'accounts:logout' %}" style="display: none;">
+                    {% csrf_token %}
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Calculate cost per liter
+            const fuelAmount = {{ receipt.fuel_amount_liters|default:"0" }};
+            const totalCost = {{ receipt.total_cost|default:"0" }};
+            const costPerLiterElement = document.getElementById('cost-per-liter');
+            
+            if (fuelAmount > 0 && totalCost > 0 && costPerLiterElement) {
+                const costPerLiter = (totalCost / fuelAmount).toFixed(3);
+                costPerLiterElement.textContent = costPerLiter + ' €/L';
+            }
+        });
+    </script>
+</body>
+</html>

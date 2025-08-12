@@ -14,6 +14,12 @@ Django>=5.2,<5.3
 psycopg[binary]>=3.1,<4
 dj-database-url>=3.0,<4
 django-axes>=8.0,<9
+
+# S3 Storage and file handling for US-C09 Fuel Receipt Tracking
+django-storages>=1.14,<2
+boto3>=1.34,<2
+Pillow>=10.0,<11
+
 # Alternative (if binary wheels are discouraged):
 # psycopg>=3.1,<4
 

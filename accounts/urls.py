@@ -75,4 +75,22 @@ urlpatterns = [
         views.time_entry_delete,
         name="time_entry_delete",
     ),
+    # Fuel receipt URLs (US-C09)
+    path("fuel-receipts/", views.fuel_receipt_list, name="fuel_receipt_list"),
+    path("fuel-receipts/new/", views.fuel_receipt_create, name="fuel_receipt_create"),
+    path(
+        "fuel-receipts/<int:receipt_id>/",
+        views.fuel_receipt_detail,
+        name="fuel_receipt_detail",
+    ),
+    path(
+        "fuel-receipts/<int:receipt_id>/edit/",
+        views.fuel_receipt_edit,
+        name="fuel_receipt_edit",
+    ),
+    path(
+        "fuel-receipts/<int:receipt_id>/delete/",
+        views.fuel_receipt_delete,
+        name="fuel_receipt_delete",
+    ),
 ]

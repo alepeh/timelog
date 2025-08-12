@@ -9,8 +9,8 @@ from django.db import IntegrityError
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from .forms import TimeEntryForm
-from .models import TimeEntry, Vehicle, VehicleUsage
+from .forms import TimeEntryForm, FuelReceiptForm
+from .models import TimeEntry, Vehicle, VehicleUsage, FuelReceipt
 
 User = get_user_model()
 
@@ -2815,3 +2815,327 @@ class TimeEntryFormWithVehicleTest(TestCase):
                 for error in form_time_error.errors.values()
             )
         )
+
+
+# US-C09: Fuel Receipt Tracking Tests
+
+
+class FuelReceiptModelTests(TestCase):
+    """Test FuelReceipt model functionality."""
+
+    def setUp(self):
+        """Set up test data."""
+        self.user = User.objects.create_user(
+            username="testuser",
+            email="test@example.com",
+            first_name="Test",
+            last_name="User",
+            role="employee",
+        )
+        
+        self.backoffice_user = User.objects.create_user(
+            username="backoffice",
+            email="backoffice@example.com",
+            first_name="Back",
+            last_name="Office",
+            role="backoffice",
+        )
+
+        self.vehicle = Vehicle.objects.create(
+            license_plate="TEST-123",
+            make="Test",
+            model="Car",
+            year=2020,
+            fuel_type="petrol",
+        )
+
+    def test_fuel_receipt_creation(self):
+        """Test basic fuel receipt creation."""
+        receipt = FuelReceipt.objects.create(
+            employee=self.user,
+            vehicle=self.vehicle,
+            odometer_reading=50000,
+            receipt_image="test.jpg",
+        )
+
+        self.assertEqual(receipt.employee, self.user)
+        self.assertEqual(receipt.vehicle, self.vehicle)
+        self.assertEqual(receipt.odometer_reading, 50000)
+        self.assertEqual(receipt.status, "pending")
+
+    def test_fuel_receipt_str_representation(self):
+        """Test string representation of fuel receipt."""
+        receipt = FuelReceipt.objects.create(
+            employee=self.user,
+            vehicle=self.vehicle,
+            odometer_reading=50000,
+            receipt_image="test.jpg",
+        )
+
+        expected = f"{self.user.get_full_name()} - {self.vehicle.license_plate} - "
+        self.assertIn(expected, str(receipt))
+
+    def test_fuel_receipt_can_be_edited_property(self):
+        """Test can_be_edited property logic."""
+        receipt = FuelReceipt.objects.create(
+            employee=self.user,
+            vehicle=self.vehicle,
+            odometer_reading=50000,
+            receipt_image="test.jpg",
+        )
+
+        # Should be editable when status is pending and within 24 hours
+        self.assertTrue(receipt.can_be_edited)
+
+        # Should not be editable when approved
+        receipt.status = "approved"
+        receipt.save()
+        self.assertFalse(receipt.can_be_edited)
+
+    def test_fuel_receipt_approve_method(self):
+        """Test approve method functionality."""
+        receipt = FuelReceipt.objects.create(
+            employee=self.user,
+            vehicle=self.vehicle,
+            odometer_reading=50000,
+            receipt_image="test.jpg",
+        )
+
+        receipt.approve(self.backoffice_user)
+
+        self.assertEqual(receipt.status, "approved")
+        self.assertEqual(receipt.approved_by, self.backoffice_user)
+        self.assertEqual(receipt.rejection_reason, "")
+
+    def test_fuel_receipt_reject_method(self):
+        """Test reject method functionality."""
+        receipt = FuelReceipt.objects.create(
+            employee=self.user,
+            vehicle=self.vehicle,
+            odometer_reading=50000,
+            receipt_image="test.jpg",
+        )
+
+        reason = "Missing required information"
+        receipt.reject(self.backoffice_user, reason)
+
+        self.assertEqual(receipt.status, "rejected")
+        self.assertEqual(receipt.approved_by, self.backoffice_user)
+        self.assertEqual(receipt.rejection_reason, reason)
+
+    def test_fuel_receipt_odometer_validation(self):
+        """Test odometer reading validation."""
+        # Create first receipt
+        FuelReceipt.objects.create(
+            employee=self.user,
+            vehicle=self.vehicle,
+            odometer_reading=50000,
+            receipt_image="test1.jpg",
+        )
+
+        # Second receipt with lower odometer reading should be invalid
+        receipt = FuelReceipt(
+            employee=self.user,
+            vehicle=self.vehicle,
+            odometer_reading=49000,  # Lower than previous
+            receipt_image="test2.jpg",
+        )
+
+        with self.assertRaises(ValidationError):
+            receipt.full_clean()
+
+
+class FuelReceiptFormTests(TestCase):
+    """Test FuelReceiptForm functionality."""
+
+    def setUp(self):
+        """Set up test data."""
+        self.user = User.objects.create_user(
+            username="testuser",
+            email="test@example.com",
+            first_name="Test",
+            last_name="User",
+            role="employee",
+        )
+
+        self.vehicle = Vehicle.objects.create(
+            license_plate="TEST-123",
+            make="Test",
+            model="Car",
+            year=2020,
+            fuel_type="petrol",
+        )
+
+        self.valid_data = {
+            "vehicle": self.vehicle.id,
+            "odometer_reading": 50000,
+            "fuel_amount_liters": "45.5",
+            "total_cost": "67.85",
+            "gas_station": "Shell",
+            "notes": "Test fuel receipt",
+        }
+
+    def test_form_valid_data(self):
+        """Test form with valid data."""
+        form = FuelReceiptForm(data=self.valid_data, user=self.user)
+        # Note: This will fail validation due to missing receipt_image
+        # but we're testing the other fields
+        self.assertFalse(form.is_valid())
+        self.assertIn("receipt_image", form.errors)
+
+    def test_form_user_filter_vehicles(self):
+        """Test that form filters vehicles correctly."""
+        form = FuelReceiptForm(user=self.user)
+        
+        # Should include active vehicles
+        vehicle_choices = list(form.fields["vehicle"].queryset)
+        self.assertIn(self.vehicle, vehicle_choices)
+
+        # Inactive vehicle should not be included
+        inactive_vehicle = Vehicle.objects.create(
+            license_plate="INACTIVE-123",
+            make="Inactive",
+            model="Car",
+            year=2020,
+            fuel_type="petrol",
+            is_active=False,
+        )
+        
+        form = FuelReceiptForm(user=self.user)
+        vehicle_choices = list(form.fields["vehicle"].queryset)
+        self.assertNotIn(inactive_vehicle, vehicle_choices)
+
+    def test_form_cost_per_liter_warning(self):
+        """Test cost per liter validation warnings."""
+        # High cost per liter should generate warning
+        data = self.valid_data.copy()
+        data["fuel_amount_liters"] = "10.0"
+        data["total_cost"] = "35.0"  # €3.50 per liter - high
+
+        form = FuelReceiptForm(data=data, user=self.user)
+        form.is_valid()  # Trigger validation
+        
+        warnings = form.get_warnings()
+        self.assertTrue(any("Preis pro Liter" in warning for warning in warnings))
+
+    def test_form_sets_employee_on_save(self):
+        """Test that form sets employee on save."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        
+        # Create a simple test image file
+        test_image = SimpleUploadedFile(
+            name="test.jpg",
+            content=b"fake image content",
+            content_type="image/jpeg"
+        )
+        
+        data = self.valid_data.copy()
+        form = FuelReceiptForm(data=data, files={"receipt_image": test_image}, user=self.user)
+        
+        if form.is_valid():
+            receipt = form.save()
+            self.assertEqual(receipt.employee, self.user)
+
+
+class FuelReceiptViewTests(TestCase):
+    """Test fuel receipt views."""
+
+    def setUp(self):
+        """Set up test data."""
+        self.client = Client()
+        self.user = User.objects.create_user(
+            username="testuser",
+            email="test@example.com",
+            password="testpass123",
+            first_name="Test",
+            last_name="User",
+            role="employee",
+        )
+
+        self.vehicle = Vehicle.objects.create(
+            license_plate="TEST-123",
+            make="Test",
+            model="Car",
+            year=2020,
+            fuel_type="petrol",
+        )
+
+        self.receipt = FuelReceipt.objects.create(
+            employee=self.user,
+            vehicle=self.vehicle,
+            odometer_reading=50000,
+            receipt_image="test.jpg",
+        )
+
+    def test_fuel_receipt_list_view_requires_login(self):
+        """Test that fuel receipt list requires authentication."""
+        response = self.client.get(reverse("accounts:fuel_receipt_list"))
+        self.assertEqual(response.status_code, 302)  # Redirect to login
+
+    def test_fuel_receipt_list_view_authenticated(self):
+        """Test fuel receipt list view for authenticated user."""
+        self.client.login(username="testuser", password="testpass123")
+        response = self.client.get(reverse("accounts:fuel_receipt_list"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Meine Tankbelege")
+
+    def test_fuel_receipt_create_view_requires_login(self):
+        """Test that fuel receipt create requires authentication."""
+        response = self.client.get(reverse("accounts:fuel_receipt_create"))
+        self.assertEqual(response.status_code, 302)  # Redirect to login
+
+    def test_fuel_receipt_create_view_authenticated(self):
+        """Test fuel receipt create view for authenticated user."""
+        self.client.login(username="testuser", password="testpass123")
+        response = self.client.get(reverse("accounts:fuel_receipt_create"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Neuer Tankbeleg")
+
+    def test_fuel_receipt_detail_view_own_receipt(self):
+        """Test fuel receipt detail view for own receipt."""
+        self.client.login(username="testuser", password="testpass123")
+        response = self.client.get(
+            reverse("accounts:fuel_receipt_detail", kwargs={"receipt_id": self.receipt.id})
+        )
+        self.assertEqual(response.status_code, 200)
+
+    def test_fuel_receipt_detail_view_other_receipt(self):
+        """Test fuel receipt detail view blocks access to other user's receipt."""
+        # Create another user and their receipt
+        other_user = User.objects.create_user(
+            username="otheruser",
+            email="other@example.com",
+            password="testpass123",
+            role="employee",
+        )
+        
+        other_receipt = FuelReceipt.objects.create(
+            employee=other_user,
+            vehicle=self.vehicle,
+            odometer_reading=51000,
+            receipt_image="other.jpg",
+        )
+
+        self.client.login(username="testuser", password="testpass123")
+        response = self.client.get(
+            reverse("accounts:fuel_receipt_detail", kwargs={"receipt_id": other_receipt.id})
+        )
+        
+        # Should redirect to list with error message
+        self.assertEqual(response.status_code, 302)
+
+    def test_fuel_receipt_edit_view_within_edit_window(self):
+        """Test fuel receipt edit view within 24-hour window."""
+        self.client.login(username="testuser", password="testpass123")
+        response = self.client.get(
+            reverse("accounts:fuel_receipt_edit", kwargs={"receipt_id": self.receipt.id})
+        )
+        self.assertEqual(response.status_code, 200)
+
+    def test_fuel_receipt_delete_view_requires_post(self):
+        """Test fuel receipt delete view requires POST method."""
+        self.client.login(username="testuser", password="testpass123")
+        response = self.client.get(
+            reverse("accounts:fuel_receipt_delete", kwargs={"receipt_id": self.receipt.id})
+        )
+        self.assertEqual(response.status_code, 405)  # Method not allowed

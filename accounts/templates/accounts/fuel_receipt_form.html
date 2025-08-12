@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - Timelog</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .header {
+            background: #007bff;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 1.5em;
+        }
+        .content {
+            padding: 30px;
+        }
+        .form-group {
+            margin-bottom: 25px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+        }
+        .form-control {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+            box-sizing: border-box;
+        }
+        .form-control:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+        .form-text {
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #0056b3;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background-color: #545b62;
+        }
+        .form-actions {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #dee2e6;
+        }
+        .messages {
+            margin-bottom: 20px;
+        }
+        .alert {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+        }
+        .alert-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .alert-error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .alert-warning {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .error-messages {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border: 1px solid #f5c6cb;
+        }
+        .error-messages ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .warning-messages {
+            background-color: #fff3cd;
+            color: #856404;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border: 1px solid #ffeaa7;
+            border-left: 4px solid #f39c12;
+        }
+        .warning-messages ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .field-errors {
+            color: #dc3545;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .receipt-section {
+            background-color: #f8f9fa;
+            padding: 25px;
+            border-radius: 8px;
+            margin: 25px 0;
+            border: 1px solid #dee2e6;
+        }
+        .receipt-section h3 {
+            margin: 0 0 20px 0;
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .file-upload-area {
+            border: 2px dashed #007bff;
+            border-radius: 8px;
+            padding: 30px;
+            text-align: center;
+            background-color: #f8f9fa;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .file-upload-area:hover {
+            background-color: #e9ecef;
+            border-color: #0056b3;
+        }
+        .file-upload-area.dragover {
+            background-color: #e7f3ff;
+            border-color: #007bff;
+        }
+        .upload-icon {
+            font-size: 3em;
+            color: #007bff;
+            margin-bottom: 15px;
+        }
+        .upload-text {
+            font-size: 1.1em;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .upload-hint {
+            font-size: 0.9em;
+            color: #666;
+        }
+        .camera-button {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 14px;
+            margin-top: 15px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        .camera-button:hover {
+            background-color: #218838;
+        }
+        .file-preview {
+            margin-top: 15px;
+            text-align: left;
+        }
+        .preview-image {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+        }
+        .cost-calculator {
+            background-color: #e9f7ef;
+            border: 1px solid #c3e6cb;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+        .cost-calculator h4 {
+            margin: 0 0 10px 0;
+            color: #155724;
+        }
+        .cost-preview {
+            font-family: monospace;
+            font-size: 14px;
+            color: #155724;
+        }
+        
+        /* Mobile Optimizations */
+        @media (max-width: 768px) {
+            .content {
+                padding: 20px;
+            }
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+            .file-upload-area {
+                padding: 20px;
+            }
+            .upload-icon {
+                font-size: 2em;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            body {
+                padding: 10px;
+            }
+            .content {
+                padding: 15px;
+            }
+            .btn {
+                width: 100%;
+                margin-bottom: 10px;
+                margin-right: 0;
+            }
+        }
+    </style>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // File upload drag and drop functionality
+            const uploadArea = document.getElementById('upload-area');
+            const fileInput = document.getElementById('id_receipt_image');
+            const preview = document.getElementById('file-preview');
+            
+            if (uploadArea && fileInput) {
+                uploadArea.addEventListener('click', () => fileInput.click());
+                
+                uploadArea.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    uploadArea.classList.add('dragover');
+                });
+                
+                uploadArea.addEventListener('dragleave', () => {
+                    uploadArea.classList.remove('dragover');
+                });
+                
+                uploadArea.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    uploadArea.classList.remove('dragover');
+                    
+                    const files = e.dataTransfer.files;
+                    if (files.length > 0) {
+                        fileInput.files = files;
+                        handleFileSelect(files[0]);
+                    }
+                });
+                
+                fileInput.addEventListener('change', (e) => {
+                    if (e.target.files.length > 0) {
+                        handleFileSelect(e.target.files[0]);
+                    }
+                });
+            }
+            
+            // Cost calculation
+            const fuelAmountInput = document.getElementById('id_fuel_amount_liters');
+            const totalCostInput = document.getElementById('id_total_cost');
+            
+            if (fuelAmountInput && totalCostInput) {
+                fuelAmountInput.addEventListener('input', calculateCostPerLiter);
+                totalCostInput.addEventListener('input', calculateCostPerLiter);
+            }
+            
+            function handleFileSelect(file) {
+                if (preview) {
+                    if (file.type.startsWith('image/')) {
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            preview.innerHTML = `
+                                <div style="margin-top: 15px;">
+                                    <strong>Ausgewählte Datei:</strong> ${file.name}<br>
+                                    <img src="${e.target.result}" class="preview-image" alt="Beleg-Vorschau">
+                                </div>
+                            `;
+                        };
+                        reader.readAsDataURL(file);
+                    } else {
+                        preview.innerHTML = `
+                            <div style="margin-top: 15px;">
+                                <strong>Ausgewählte Datei:</strong> ${file.name}<br>
+                                <small>Dateigröße: ${(file.size / 1024 / 1024).toFixed(2)} MB</small>
+                            </div>
+                        `;
+                    }
+                }
+            }
+            
+            function calculateCostPerLiter() {
+                const fuelAmount = parseFloat(fuelAmountInput.value);
+                const totalCost = parseFloat(totalCostInput.value);
+                const calculator = document.getElementById('cost-calculator');
+                
+                if (fuelAmount && totalCost && fuelAmount > 0) {
+                    const costPerLiter = (totalCost / fuelAmount).toFixed(2);
+                    let warningClass = '';
+                    let warningText = '';
+                    
+                    if (costPerLiter > 3.0) {
+                        warningClass = 'text-danger';
+                        warningText = ' ⚠️ Sehr hoch!';
+                    } else if (costPerLiter < 0.5) {
+                        warningClass = 'text-warning';
+                        warningText = ' ⚠️ Sehr niedrig!';
+                    }
+                    
+                    calculator.innerHTML = `
+                        <h4>💰 Kosten-Berechnung:</h4>
+                        <div class="cost-preview">
+                            ${totalCost.toFixed(2)}€ ÷ ${fuelAmount} L = 
+                            <strong class="${warningClass}">${costPerLiter}€/L${warningText}</strong>
+                        </div>
+                    `;
+                    calculator.style.display = 'block';
+                } else {
+                    calculator.style.display = 'none';
+                }
+            }
+        });
+        
+        // Camera capture for mobile devices
+        function captureFromCamera() {
+            const fileInput = document.getElementById('id_receipt_image');
+            
+            // For mobile devices, this will open the camera
+            if (fileInput) {
+                fileInput.setAttribute('capture', 'environment');
+                fileInput.click();
+            }
+        }
+    </script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⛽ {{ title }}</h1>
+        </div>
+        
+        <div class="content">
+            {% if messages %}
+                <div class="messages">
+                    {% for message in messages %}
+                        <div class="alert alert-{% if message.tags == 'error' %}error{% else %}{{ message.tags }}{% endif %}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            {% if form.non_field_errors %}
+                <div class="error-messages">
+                    <strong>Bitte korrigieren Sie die folgenden Fehler:</strong>
+                    <ul>
+                        {% for error in form.non_field_errors %}
+                            <li>{{ error }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endif %}
+
+            {% if form.get_warnings %}
+                <div class="warning-messages">
+                    <strong>⚠️ Hinweise:</strong>
+                    <ul>
+                        {% for warning in form.get_warnings %}
+                            <li>{{ warning }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endif %}
+
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                
+                <!-- Vehicle and Odometer Section -->
+                <div class="form-group">
+                    <label for="{{ form.vehicle.id_for_label }}">{{ form.vehicle.label }}</label>
+                    {{ form.vehicle }}
+                    {% if form.vehicle.help_text %}
+                        <div class="form-text">{{ form.vehicle.help_text }}</div>
+                    {% endif %}
+                    {% if form.vehicle.errors %}
+                        <div class="field-errors">
+                            {% for error in form.vehicle.errors %}
+                                {{ error }}<br>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="form-group">
+                    <label for="{{ form.odometer_reading.id_for_label }}">{{ form.odometer_reading.label }}</label>
+                    {{ form.odometer_reading }}
+                    {% if form.odometer_reading.help_text %}
+                        <div class="form-text">{{ form.odometer_reading.help_text }}</div>
+                    {% endif %}
+                    {% if form.odometer_reading.errors %}
+                        <div class="field-errors">
+                            {% for error in form.odometer_reading.errors %}
+                                {{ error }}<br>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <!-- Receipt Upload Section -->
+                <div class="receipt-section">
+                    <h3>📸 Beleg-Upload</h3>
+                    
+                    <div class="form-group">
+                        <label for="{{ form.receipt_image.id_for_label }}">{{ form.receipt_image.label }}</label>
+                        <div id="upload-area" class="file-upload-area">
+                            <div class="upload-icon">📄</div>
+                            <div class="upload-text">Klicken oder Datei hierher ziehen</div>
+                            <div class="upload-hint">JPG, PNG oder PDF (max. 10MB)</div>
+                            <button type="button" class="camera-button" onclick="captureFromCamera()">
+                                📷 Kamera öffnen
+                            </button>
+                        </div>
+                        {{ form.receipt_image }}
+                        <div id="file-preview"></div>
+                        
+                        {% if form.receipt_image.help_text %}
+                            <div class="form-text">{{ form.receipt_image.help_text }}</div>
+                        {% endif %}
+                        {% if form.receipt_image.errors %}
+                            <div class="field-errors">
+                                {% for error in form.receipt_image.errors %}
+                                    {{ error }}<br>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Fuel Details Section -->
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="{{ form.fuel_amount_liters.id_for_label }}">{{ form.fuel_amount_liters.label }}</label>
+                        {{ form.fuel_amount_liters }}
+                        {% if form.fuel_amount_liters.help_text %}
+                            <div class="form-text">{{ form.fuel_amount_liters.help_text }}</div>
+                        {% endif %}
+                        {% if form.fuel_amount_liters.errors %}
+                            <div class="field-errors">
+                                {% for error in form.fuel_amount_liters.errors %}
+                                    {{ error }}<br>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="form-group">
+                        <label for="{{ form.total_cost.id_for_label }}">{{ form.total_cost.label }}</label>
+                        {{ form.total_cost }}
+                        {% if form.total_cost.help_text %}
+                            <div class="form-text">{{ form.total_cost.help_text }}</div>
+                        {% endif %}
+                        {% if form.total_cost.errors %}
+                            <div class="field-errors">
+                                {% for error in form.total_cost.errors %}
+                                    {{ error }}<br>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Cost Calculator -->
+                <div id="cost-calculator" class="cost-calculator" style="display: none;">
+                    <!-- Dynamic content populated by JavaScript -->
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="{{ form.gas_station.id_for_label }}">{{ form.gas_station.label }}</label>
+                        {{ form.gas_station }}
+                        {% if form.gas_station.help_text %}
+                            <div class="form-text">{{ form.gas_station.help_text }}</div>
+                        {% endif %}
+                        {% if form.gas_station.errors %}
+                            <div class="field-errors">
+                                {% for error in form.gas_station.errors %}
+                                    {{ error }}<br>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="form-group">
+                        <label for="{{ form.fuel_purchase_date.id_for_label }}">{{ form.fuel_purchase_date.label }}</label>
+                        {{ form.fuel_purchase_date }}
+                        {% if form.fuel_purchase_date.help_text %}
+                            <div class="form-text">{{ form.fuel_purchase_date.help_text }}</div>
+                        {% endif %}
+                        {% if form.fuel_purchase_date.errors %}
+                            <div class="field-errors">
+                                {% for error in form.fuel_purchase_date.errors %}
+                                    {{ error }}<br>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="{{ form.notes.id_for_label }}">{{ form.notes.label }}</label>
+                    {{ form.notes }}
+                    {% if form.notes.help_text %}
+                        <div class="form-text">{{ form.notes.help_text }}</div>
+                    {% endif %}
+                    {% if form.notes.errors %}
+                        <div class="field-errors">
+                            {% for error in form.notes.errors %}
+                                {{ error }}<br>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">
+                        {{ submit_text|default:"Beleg einreichen" }}
+                    </button>
+                    <a href="{% url 'accounts:fuel_receipt_list' %}" class="btn btn-secondary">
+                        Abbrechen
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+</html>
