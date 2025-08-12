@@ -78,18 +78,37 @@ class CalendarDay:
             return f"Nicht-Arbeitstag: {reason}"
         elif self.has_time_entry:
             entry = self.time_entry
-            return (
+            tooltip = (
                 f"Arbeitszeit: {entry.start_time.strftime('%H:%M')} - "
                 f"{entry.end_time.strftime('%H:%M')} "
                 f"({entry.total_work_hours:.1f}h)\n"
                 f"Pause: {entry.lunch_break_minutes} Min\n"
                 f"Verschmutzung: {entry.get_pollution_level_display()}"
             )
+            # Add vehicle information if available
+            vehicle_info = self.vehicle_info
+            if vehicle_info:
+                tooltip += f"\nFahrzeug: {vehicle_info}"
+            return tooltip
         elif self.is_weekend:
             day_name = "Samstag" if self.date.weekday() == 5 else "Sonntag"
             return f"Wochenende: {day_name}"
         else:
             return "Fehlender Zeiteintrag"
+
+    @property
+    def vehicle_info(self) -> str:
+        """Get vehicle information for this day."""
+        if self.time_entry and hasattr(self.time_entry, "vehicleusage"):
+            usage = self.time_entry.vehicleusage
+            if usage.no_vehicle_used:
+                return "🚶 Kein Fahrzeug"
+            elif usage.vehicle:
+                distance_info = (
+                    f" ({usage.daily_distance}km)" if usage.daily_distance > 0 else ""
+                )
+                return f"🚗 {usage.vehicle.license_plate}{distance_info}"
+        return ""
 
 
 class MonthlyCalendar:
@@ -171,10 +190,14 @@ class MonthlyCalendar:
             self.days.append(day)
             current_date += timedelta(days=1)
 
-        # Load time entries for this month
-        time_entries = TimeEntry.objects.filter(
-            user=self.user, date__gte=month_start, date__lte=month_end
-        ).select_related("user")
+        # Load time entries for this month with vehicle usage data
+        time_entries = (
+            TimeEntry.objects.filter(
+                user=self.user, date__gte=month_start, date__lte=month_end
+            )
+            .select_related("user")
+            .prefetch_related("vehicleusage__vehicle")
+        )
 
         time_entries_by_date = {entry.date: entry for entry in time_entries}
 

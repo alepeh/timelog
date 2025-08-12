@@ -10,7 +10,7 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from .forms import TimeEntryForm
-from .models import TimeEntry
+from .models import TimeEntry, Vehicle, VehicleUsage
 
 User = get_user_model()
 
@@ -2149,3 +2149,669 @@ class HomeViewAuthenticationTest(TestCase):
         response = self.client.get(url)
         self.assertContains(response, "Anmelden")
         self.assertNotContains(response, "Willkommen")
+
+
+class VehicleModelTest(TestCase):
+    """Test Vehicle model functionality."""
+
+    def setUp(self):
+        self.vehicle_data = {
+            "license_plate": "AB-123-CD",
+            "make": "Volkswagen",
+            "model": "Golf",
+            "year": 2020,
+            "color": "Blau",
+            "fuel_type": "petrol",
+            "is_active": True,
+            "notes": "Firmenfahrzeug für Außendienst",
+        }
+
+    def test_vehicle_creation(self):
+        """Test creating a vehicle with valid data."""
+        vehicle = Vehicle.objects.create(**self.vehicle_data)
+
+        self.assertEqual(vehicle.license_plate, "AB-123-CD")
+        self.assertEqual(vehicle.make, "Volkswagen")
+        self.assertEqual(vehicle.model, "Golf")
+        self.assertEqual(vehicle.year, 2020)
+        self.assertEqual(vehicle.color, "Blau")
+        self.assertEqual(vehicle.fuel_type, "petrol")
+        self.assertTrue(vehicle.is_active)
+        self.assertEqual(vehicle.notes, "Firmenfahrzeug für Außendienst")
+
+    def test_vehicle_str_representation(self):
+        """Test string representation of vehicle."""
+        vehicle = Vehicle.objects.create(**self.vehicle_data)
+        expected = "AB-123-CD (Volkswagen Golf)"
+        self.assertEqual(str(vehicle), expected)
+
+    def test_vehicle_license_plate_unique(self):
+        """Test that license plates must be unique."""
+        Vehicle.objects.create(**self.vehicle_data)
+
+        # Try to create another vehicle with same license plate
+        with self.assertRaises(IntegrityError):
+            Vehicle.objects.create(
+                **{**self.vehicle_data, "make": "BMW", "model": "3er"}
+            )
+
+    def test_vehicle_license_plate_normalization(self):
+        """Test that license plates are normalized (uppercase, no spaces)."""
+        vehicle = Vehicle.objects.create(
+            **{**self.vehicle_data, "license_plate": " ab-123-cd "}
+        )
+        vehicle.clean()  # Trigger validation
+        self.assertEqual(vehicle.license_plate, "AB-123-CD")
+
+    def test_vehicle_year_validation_too_old(self):
+        """Test validation fails for vehicles too old."""
+        vehicle = Vehicle(**{**self.vehicle_data, "year": 1800})
+        with self.assertRaises(ValidationError) as context:
+            vehicle.clean()
+        self.assertIn("year", context.exception.message_dict)
+
+    def test_vehicle_year_validation_too_new(self):
+        """Test validation fails for vehicles from future."""
+        from django.utils import timezone
+
+        future_year = timezone.now().year + 5
+        vehicle = Vehicle(**{**self.vehicle_data, "year": future_year})
+        with self.assertRaises(ValidationError) as context:
+            vehicle.clean()
+        self.assertIn("year", context.exception.message_dict)
+
+    def test_vehicle_fuel_type_choices(self):
+        """Test all fuel type choices work."""
+        fuel_types = ["petrol", "diesel", "electric", "hybrid", "other"]
+        for fuel_type in fuel_types:
+            vehicle = Vehicle.objects.create(
+                **{
+                    **self.vehicle_data,
+                    "license_plate": f"TEST-{fuel_type.upper()}",
+                    "fuel_type": fuel_type,
+                }
+            )
+            self.assertEqual(vehicle.fuel_type, fuel_type)
+
+    def test_vehicle_defaults(self):
+        """Test vehicle model defaults."""
+        vehicle = Vehicle.objects.create(
+            license_plate="DEFAULT-123",
+            make="Test",
+            model="Test",
+            year=2023,
+        )
+        self.assertEqual(vehicle.fuel_type, "petrol")
+        self.assertTrue(vehicle.is_active)
+        self.assertEqual(vehicle.color, "")
+        self.assertEqual(vehicle.notes, "")
+
+
+class VehicleUsageModelTest(TestCase):
+    """Test VehicleUsage model functionality."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="testuser",
+            email="test@example.com",
+            password="testpass123",
+            role="employee",
+        )
+
+        self.vehicle = Vehicle.objects.create(
+            license_plate="TEST-123",
+            make="Test",
+            model="Car",
+            year=2023,
+            fuel_type="petrol",
+        )
+
+        self.time_entry = TimeEntry.objects.create(
+            user=self.user,
+            date=date(2024, 1, 15),
+            start_time=time(8, 0),
+            end_time=time(17, 0),
+            lunch_break_minutes=60,
+            pollution_level=1,
+            created_by=self.user,
+            updated_by=self.user,
+        )
+
+    def test_vehicle_usage_creation_with_vehicle(self):
+        """Test creating vehicle usage with vehicle and mileage."""
+        usage = VehicleUsage.objects.create(
+            time_entry=self.time_entry,
+            vehicle=self.vehicle,
+            start_kilometers=50000,
+            end_kilometers=50150,
+            no_vehicle_used=False,
+            notes="Kundentermin in der Stadt",
+        )
+
+        self.assertEqual(usage.time_entry, self.time_entry)
+        self.assertEqual(usage.vehicle, self.vehicle)
+        self.assertEqual(usage.start_kilometers, 50000)
+        self.assertEqual(usage.end_kilometers, 50150)
+        self.assertFalse(usage.no_vehicle_used)
+        self.assertEqual(usage.daily_distance, 150)
+
+    def test_vehicle_usage_creation_no_vehicle(self):
+        """Test creating vehicle usage without vehicle."""
+        usage = VehicleUsage.objects.create(
+            time_entry=self.time_entry,
+            no_vehicle_used=True,
+            notes="Arbeitsplatz zu Fuß erreicht",
+        )
+
+        self.assertEqual(usage.time_entry, self.time_entry)
+        self.assertIsNone(usage.vehicle)
+        self.assertIsNone(usage.start_kilometers)
+        self.assertIsNone(usage.end_kilometers)
+        self.assertTrue(usage.no_vehicle_used)
+        self.assertEqual(usage.daily_distance, 0)
+
+    def test_vehicle_usage_str_representation_with_vehicle(self):
+        """Test string representation with vehicle."""
+        usage = VehicleUsage.objects.create(
+            time_entry=self.time_entry,
+            vehicle=self.vehicle,
+            start_kilometers=50000,
+            end_kilometers=50150,
+        )
+        expected = f"{self.user.get_full_name()} - 2024-01-15 (TEST-123)"
+        self.assertEqual(str(usage), expected)
+
+    def test_vehicle_usage_str_representation_no_vehicle(self):
+        """Test string representation without vehicle."""
+        usage = VehicleUsage.objects.create(
+            time_entry=self.time_entry,
+            no_vehicle_used=True,
+        )
+        expected = f"{self.user.get_full_name()} - 2024-01-15 (Kein Fahrzeug)"
+        self.assertEqual(str(usage), expected)
+
+    def test_daily_distance_calculation(self):
+        """Test daily distance calculation property."""
+        usage = VehicleUsage.objects.create(
+            time_entry=self.time_entry,
+            vehicle=self.vehicle,
+            start_kilometers=1000,
+            end_kilometers=1250,
+        )
+        self.assertEqual(usage.daily_distance, 250)
+
+    def test_daily_distance_with_no_vehicle(self):
+        """Test daily distance is 0 when no vehicle used."""
+        usage = VehicleUsage.objects.create(
+            time_entry=self.time_entry,
+            no_vehicle_used=True,
+        )
+        self.assertEqual(usage.daily_distance, 0)
+
+    def test_daily_distance_with_missing_kilometers(self):
+        """Test daily distance is 0 when kilometers missing."""
+        usage = VehicleUsage.objects.create(
+            time_entry=self.time_entry,
+            vehicle=self.vehicle,
+        )
+        self.assertEqual(usage.daily_distance, 0)
+
+    def test_mileage_validation_end_less_than_start(self):
+        """Test validation fails when end km < start km."""
+        usage = VehicleUsage(
+            time_entry=self.time_entry,
+            vehicle=self.vehicle,
+            start_kilometers=1000,
+            end_kilometers=900,
+            no_vehicle_used=False,
+        )
+        with self.assertRaises(ValidationError) as context:
+            usage.clean()
+        self.assertIn("end_kilometers", context.exception.message_dict)
+
+    def test_mileage_validation_unreasonable_distance(self):
+        """Test validation warns for unreasonable daily distances."""
+        usage = VehicleUsage(
+            time_entry=self.time_entry,
+            vehicle=self.vehicle,
+            start_kilometers=1000,
+            end_kilometers=1600,  # 600km in one day
+            no_vehicle_used=False,
+        )
+        with self.assertRaises(ValidationError):
+            usage.clean()
+
+    def test_mileage_validation_missing_when_vehicle_used(self):
+        """Test validation fails when vehicle used but mileage missing."""
+        usage = VehicleUsage(
+            time_entry=self.time_entry,
+            vehicle=self.vehicle,
+            no_vehicle_used=False,
+        )
+        with self.assertRaises(ValidationError):
+            usage.clean()
+
+    def test_no_vehicle_clears_related_fields(self):
+        """Test that no_vehicle_used clears vehicle and mileage fields."""
+        usage = VehicleUsage(
+            time_entry=self.time_entry,
+            vehicle=self.vehicle,
+            start_kilometers=1000,
+            end_kilometers=1100,
+            no_vehicle_used=True,
+        )
+        usage.clean()
+
+        # Should clear vehicle-related fields when no vehicle used
+        self.assertIsNone(usage.vehicle)
+        self.assertIsNone(usage.start_kilometers)
+        self.assertIsNone(usage.end_kilometers)
+
+    def test_one_to_one_relationship_with_time_entry(self):
+        """Test one-to-one relationship constraint with TimeEntry."""
+        # Create first vehicle usage
+        VehicleUsage.objects.create(
+            time_entry=self.time_entry,
+            vehicle=self.vehicle,
+            start_kilometers=1000,
+            end_kilometers=1100,
+        )
+
+        # Try to create second usage for same time entry
+        with self.assertRaises(IntegrityError):
+            VehicleUsage.objects.create(
+                time_entry=self.time_entry,
+                vehicle=self.vehicle,
+                start_kilometers=1100,
+                end_kilometers=1200,
+            )
+
+
+class VehicleIntegrationTest(TestCase):
+    """Test integration between Vehicle, VehicleUsage, and other models."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="testuser",
+            email="test@example.com",
+            password="testpass123",
+            role="employee",
+        )
+
+        self.vehicle = Vehicle.objects.create(
+            license_plate="COMPANY-1",
+            make="Volkswagen",
+            model="Passat",
+            year=2022,
+            fuel_type="diesel",
+        )
+
+    def test_user_default_vehicle_relationship(self):
+        """Test User model's default_vehicle relationship."""
+        # Set default vehicle
+        self.user.default_vehicle = self.vehicle
+        self.user.save()
+
+        self.assertEqual(self.user.default_vehicle, self.vehicle)
+
+        # Test cascade behavior - should not delete vehicle when user deleted
+        vehicle_id = self.vehicle.id
+        self.user.delete()
+        self.assertTrue(Vehicle.objects.filter(id=vehicle_id).exists())
+
+    def test_vehicle_usage_protection_on_vehicle_delete(self):
+        """Test that vehicles with usage cannot be deleted (PROTECT)."""
+        time_entry = TimeEntry.objects.create(
+            user=self.user,
+            date=date(2024, 1, 15),
+            start_time=time(9, 0),
+            end_time=time(17, 30),
+            lunch_break_minutes=45,
+            pollution_level=1,
+            created_by=self.user,
+            updated_by=self.user,
+        )
+
+        VehicleUsage.objects.create(
+            time_entry=time_entry,
+            vehicle=self.vehicle,
+            start_kilometers=75000,
+            end_kilometers=75200,
+        )
+
+        # Try to delete vehicle - should be protected by PROTECT constraint
+        from django.db.models import ProtectedError
+
+        with self.assertRaises(ProtectedError):
+            self.vehicle.delete()
+
+    def test_vehicle_usage_cascade_on_time_entry_delete(self):
+        """Test that vehicle usage is deleted when time entry is deleted."""
+        time_entry = TimeEntry.objects.create(
+            user=self.user,
+            date=date(2024, 1, 15),
+            start_time=time(9, 0),
+            end_time=time(17, 30),
+            lunch_break_minutes=45,
+            pollution_level=1,
+            created_by=self.user,
+            updated_by=self.user,
+        )
+
+        usage = VehicleUsage.objects.create(
+            time_entry=time_entry,
+            vehicle=self.vehicle,
+            start_kilometers=75000,
+            end_kilometers=75200,
+        )
+
+        usage_id = usage.id
+
+        # Delete time entry
+        time_entry.delete()
+
+        # Vehicle usage should also be deleted (CASCADE)
+        self.assertFalse(VehicleUsage.objects.filter(id=usage_id).exists())
+
+        # But vehicle should still exist
+        self.assertTrue(Vehicle.objects.filter(id=self.vehicle.id).exists())
+
+
+class TimeEntryFormWithVehicleTest(TestCase):
+    """Test TimeEntryForm with vehicle tracking functionality (US-C08)."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="testuser",
+            email="test@example.com",
+            password="testpass123",
+            role="employee",
+        )
+
+        self.vehicle1 = Vehicle.objects.create(
+            license_plate="TEST-001",
+            make="Volkswagen",
+            model="Golf",
+            year=2020,
+            fuel_type="petrol",
+            is_active=True,
+        )
+
+        self.vehicle2 = Vehicle.objects.create(
+            license_plate="TEST-002",
+            make="BMW",
+            model="3er",
+            year=2021,
+            fuel_type="diesel",
+            is_active=False,  # Inactive vehicle
+        )
+
+        # Set default vehicle for user
+        self.user.default_vehicle = self.vehicle1
+        self.user.save()
+
+        self.form_data = {
+            "date": "2024-01-15",
+            "start_time": "08:00",
+            "end_time": "17:00",
+            "lunch_break_minutes": 60,
+            "pollution_level": 1,
+            "notes": "Test entry",
+        }
+
+    def test_form_shows_only_active_vehicles(self):
+        """Test that form only shows active vehicles in dropdown."""
+        form = TimeEntryForm(user=self.user)
+
+        vehicle_choices = list(form.fields["vehicle"].queryset)
+        self.assertIn(self.vehicle1, vehicle_choices)
+        self.assertNotIn(self.vehicle2, vehicle_choices)
+
+    def test_form_sets_default_vehicle_for_new_entries(self):
+        """Test that form pre-selects user's default vehicle."""
+        form = TimeEntryForm(user=self.user)
+        self.assertEqual(form.fields["vehicle"].initial, self.vehicle1)
+
+    def test_form_loads_existing_vehicle_data_for_editing(self):
+        """Test that form loads existing vehicle usage data when editing."""
+        # Create time entry with vehicle usage
+        time_entry = TimeEntry.objects.create(
+            user=self.user,
+            date=date(2024, 1, 15),
+            start_time=time(8, 0),
+            end_time=time(17, 0),
+            lunch_break_minutes=60,
+            pollution_level=1,
+            created_by=self.user,
+            updated_by=self.user,
+        )
+
+        VehicleUsage.objects.create(
+            time_entry=time_entry,
+            vehicle=self.vehicle1,
+            start_kilometers=50000,
+            end_kilometers=50150,
+            no_vehicle_used=False,
+            notes="Customer visit",
+        )
+
+        # Create form for editing
+        form = TimeEntryForm(instance=time_entry, user=self.user)
+
+        self.assertEqual(form.fields["vehicle"].initial, self.vehicle1)
+        self.assertEqual(form.fields["start_kilometers"].initial, 50000)
+        self.assertEqual(form.fields["end_kilometers"].initial, 50150)
+        self.assertFalse(form.fields["no_vehicle_used"].initial)
+        self.assertEqual(form.fields["vehicle_notes"].initial, "Customer visit")
+
+    def test_form_with_valid_vehicle_data(self):
+        """Test form submission with valid vehicle data."""
+        form_data = {
+            **self.form_data,
+            "vehicle": self.vehicle1.id,
+            "start_kilometers": 50000,
+            "end_kilometers": 50150,
+            "no_vehicle_used": False,
+            "vehicle_notes": "Customer meeting",
+        }
+
+        form = TimeEntryForm(data=form_data, user=self.user)
+        self.assertTrue(form.is_valid())
+
+        time_entry = form.save()
+
+        # Check that VehicleUsage was created
+        self.assertTrue(VehicleUsage.objects.filter(time_entry=time_entry).exists())
+
+        vehicle_usage = VehicleUsage.objects.get(time_entry=time_entry)
+        self.assertEqual(vehicle_usage.vehicle, self.vehicle1)
+        self.assertEqual(vehicle_usage.start_kilometers, 50000)
+        self.assertEqual(vehicle_usage.end_kilometers, 50150)
+        self.assertFalse(vehicle_usage.no_vehicle_used)
+        self.assertEqual(vehicle_usage.notes, "Customer meeting")
+
+    def test_form_with_no_vehicle_used(self):
+        """Test form submission when no vehicle is used."""
+        form_data = {
+            **self.form_data,
+            "no_vehicle_used": True,
+            # Vehicle fields should be ignored
+            "vehicle": self.vehicle1.id,
+            "start_kilometers": 50000,
+            "end_kilometers": 50150,
+        }
+
+        form = TimeEntryForm(data=form_data, user=self.user)
+        self.assertTrue(form.is_valid())
+
+        time_entry = form.save()
+
+        # Check that VehicleUsage was created with no vehicle
+        vehicle_usage = VehicleUsage.objects.get(time_entry=time_entry)
+        self.assertIsNone(vehicle_usage.vehicle)
+        self.assertIsNone(vehicle_usage.start_kilometers)
+        self.assertIsNone(vehicle_usage.end_kilometers)
+        self.assertTrue(vehicle_usage.no_vehicle_used)
+
+    def test_form_validation_missing_mileage_when_vehicle_selected(self):
+        """Test validation fails when vehicle is selected but mileage is missing."""
+        form_data = {
+            **self.form_data,
+            "vehicle": self.vehicle1.id,
+            "no_vehicle_used": False,
+            # Missing start_kilometers and end_kilometers
+        }
+
+        form = TimeEntryForm(data=form_data, user=self.user)
+        self.assertFalse(form.is_valid())
+        self.assertIn(
+            "Bei Fahrzeugnutzung müssen Anfangs- und End-Kilometer", str(form.errors)
+        )
+
+    def test_form_validation_end_km_less_than_start_km(self):
+        """Test validation fails when end km is less than start km."""
+        form_data = {
+            **self.form_data,
+            "vehicle": self.vehicle1.id,
+            "start_kilometers": 50000,
+            "end_kilometers": 49900,  # Less than start
+            "no_vehicle_used": False,
+        }
+
+        form = TimeEntryForm(data=form_data, user=self.user)
+        self.assertFalse(form.is_valid())
+        self.assertIn("end_kilometers", form.errors)
+
+    def test_form_warning_for_high_daily_distance(self):
+        """Test form shows warning for unreasonably high daily distance."""
+        form_data = {
+            **self.form_data,
+            "vehicle": self.vehicle1.id,
+            "start_kilometers": 50000,
+            "end_kilometers": 50600,  # 600km in one day
+            "no_vehicle_used": False,
+        }
+
+        form = TimeEntryForm(data=form_data, user=self.user)
+        form.is_valid()  # Trigger validation
+
+        warnings = form.get_warnings()
+        self.assertTrue(any("hohe Tageskilometer" in warning for warning in warnings))
+
+    def test_form_warning_for_zero_distance(self):
+        """Test form shows warning for zero daily distance."""
+        form_data = {
+            **self.form_data,
+            "vehicle": self.vehicle1.id,
+            "start_kilometers": 50000,
+            "end_kilometers": 50000,  # Same start and end
+            "no_vehicle_used": False,
+        }
+
+        form = TimeEntryForm(data=form_data, user=self.user)
+        form.is_valid()  # Trigger validation
+
+        warnings = form.get_warnings()
+        self.assertTrue(
+            any("Keine Kilometer gefahren" in warning for warning in warnings)
+        )
+
+    def test_form_updates_existing_vehicle_usage(self):
+        """Test form updates existing VehicleUsage when editing time entry."""
+        # Create time entry with initial vehicle usage
+        time_entry = TimeEntry.objects.create(
+            user=self.user,
+            date=date(2024, 1, 15),
+            start_time=time(8, 0),
+            end_time=time(17, 0),
+            lunch_break_minutes=60,
+            pollution_level=1,
+            created_by=self.user,
+            updated_by=self.user,
+        )
+
+        VehicleUsage.objects.create(
+            time_entry=time_entry,
+            vehicle=self.vehicle1,
+            start_kilometers=50000,
+            end_kilometers=50100,
+            no_vehicle_used=False,
+        )
+
+        # Update with new vehicle data
+        form_data = {
+            **self.form_data,
+            "start_kilometers": 50100,
+            "end_kilometers": 50250,
+            "vehicle_notes": "Updated notes",
+        }
+
+        form = TimeEntryForm(data=form_data, instance=time_entry, user=self.user)
+        self.assertTrue(form.is_valid())
+
+        updated_entry = form.save()
+
+        # Check that same VehicleUsage record was updated
+        vehicle_usage = VehicleUsage.objects.get(time_entry=updated_entry)
+        self.assertEqual(vehicle_usage.start_kilometers, 50100)
+        self.assertEqual(vehicle_usage.end_kilometers, 50250)
+        self.assertEqual(vehicle_usage.notes, "Updated notes")
+
+    def test_form_without_default_vehicle(self):
+        """Test form behavior when user has no default vehicle."""
+        # Remove default vehicle
+        self.user.default_vehicle = None
+        self.user.save()
+
+        form = TimeEntryForm(user=self.user)
+        self.assertIsNone(form.fields["vehicle"].initial)
+
+    def test_form_vehicle_field_labels_and_help_text(self):
+        """Test that vehicle fields have proper German labels and help text."""
+        form = TimeEntryForm(user=self.user)
+
+        self.assertEqual(form.fields["vehicle"].label, "Fahrzeug")
+        self.assertEqual(
+            form.fields["no_vehicle_used"].label, "Kein Fahrzeug verwendet"
+        )
+        self.assertEqual(form.fields["start_kilometers"].label, "Anfangs-km")
+        self.assertEqual(form.fields["end_kilometers"].label, "End-km")
+        self.assertEqual(form.fields["vehicle_notes"].label, "Fahrzeug-Notizen")
+
+        # Check help text is present
+        self.assertIn("Firmenfahrzeug", form.fields["vehicle"].help_text)
+        self.assertIn("kein Fahrzeug", form.fields["no_vehicle_used"].help_text)
+
+    def test_form_integration_with_existing_validations(self):
+        """Test that vehicle validation works alongside existing time validations."""
+        # Test that we can have separate validation errors
+        form_data = {
+            **self.form_data,
+            "start_time": "08:00",  # Valid times
+            "end_time": "17:00",
+            "vehicle": self.vehicle1.id,
+            "start_kilometers": 50000,
+            "end_kilometers": 49000,  # Invalid: end less than start
+        }
+
+        form = TimeEntryForm(data=form_data, user=self.user)
+        self.assertFalse(form.is_valid())
+
+        # Should have vehicle validation error
+        self.assertIn("end_kilometers", form.errors)
+
+        # Also test that time validation still works independently
+        form_data_time_error = {
+            **self.form_data,
+            "start_time": "17:00",  # Invalid: start after end
+            "end_time": "16:00",
+        }
+
+        form_time_error = TimeEntryForm(data=form_data_time_error, user=self.user)
+        self.assertFalse(form_time_error.is_valid())
+        self.assertTrue(
+            any(
+                "Endzeit muss nach der Startzeit" in str(error)
+                for error in form_time_error.errors.values()
+            )
+        )

@@ -190,6 +190,165 @@
             color: #666;
             font-size: 14px;
         }
+        .summary-card.vehicle-card {
+            border-left-color: #28a745;
+        }
+        .summary-card.vehicle-card h3 {
+            color: #28a745;
+        }
+        .summary-card.kilometers-card {
+            border-left-color: #ffc107;
+        }
+        .summary-card.kilometers-card h3 {
+            color: #ffc107;
+        }
+        .vehicle-badge {
+            padding: 4px 8px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 500;
+            display: inline-block;
+            text-align: center;
+            line-height: 1.2;
+        }
+        .vehicle-badge.with-vehicle {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .vehicle-badge.no-vehicle {
+            background-color: #e2e3e5;
+            color: #495057;
+            border: 1px solid #ced4da;
+        }
+        .vehicle-badge.unknown {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .vehicle-badge small {
+            display: block;
+            font-size: 10px;
+            margin-top: 2px;
+            opacity: 0.8;
+        }
+        .filter-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border: 1px solid #dee2e6;
+        }
+        .filter-section h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 1.1em;
+        }
+        .filter-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr auto;
+            gap: 15px;
+            align-items: end;
+        }
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+        }
+        .filter-group label {
+            font-size: 14px;
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 5px;
+        }
+        .filter-group .form-control {
+            padding: 8px 12px;
+            font-size: 14px;
+        }
+        .filter-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .filter-actions .btn {
+            white-space: nowrap;
+        }
+        @media (max-width: 768px) {
+            .content {
+                padding: 15px;
+            }
+            .header {
+                flex-direction: column;
+                text-align: center;
+                gap: 10px;
+            }
+            .actions {
+                flex-direction: column;
+                align-items: center;
+            }
+            .actions .btn {
+                width: 100%;
+                max-width: 200px;
+            }
+            .filter-row {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+            .filter-actions {
+                justify-content: center;
+            }
+            .summary-cards {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 15px;
+            }
+            .table {
+                font-size: 14px;
+            }
+            .table th,
+            .table td {
+                padding: 8px 6px;
+            }
+            .vehicle-badge {
+                font-size: 11px;
+                padding: 3px 6px;
+            }
+            .vehicle-badge small {
+                font-size: 9px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .summary-cards {
+                grid-template-columns: 1fr;
+            }
+            .table {
+                font-size: 12px;
+            }
+            .table th,
+            .table td {
+                padding: 6px 4px;
+            }
+            .btn-sm {
+                padding: 4px 8px;
+                font-size: 11px;
+            }
+            .vehicle-badge {
+                font-size: 10px;
+                padding: 2px 5px;
+                line-height: 1.1;
+            }
+            .vehicle-badge br {
+                display: none;
+            }
+            .vehicle-badge small {
+                display: inline;
+                margin-left: 4px;
+            }
+            .vehicle-badge small:before {
+                content: " (";
+            }
+            .vehicle-badge small:after {
+                content: ")";
+            }
+        }
     </style>
 </head>
 <body>
@@ -224,15 +383,70 @@
                 </a>
             </div>
 
+            <!-- Filter Section -->
+            <div class="filter-section">
+                <h3 style="margin-bottom: 15px; color: #333;">🔍 Filter & Suche</h3>
+                <form method="get" class="filter-form">
+                    <div class="filter-row">
+                        <div class="filter-group">
+                            <label for="vehicle">Fahrzeug:</label>
+                            <select name="vehicle" id="vehicle" class="form-control">
+                                <option value="">Alle Fahrzeuge</option>
+                                <option value="no_vehicle" {% if current_filters.vehicle == "no_vehicle" %}selected{% endif %}>
+                                    🚶 Kein Fahrzeug verwendet
+                                </option>
+                                <option value="with_vehicle" {% if current_filters.vehicle == "with_vehicle" %}selected{% endif %}>
+                                    🚗 Mit Fahrzeug (alle)
+                                </option>
+                                {% for vehicle in available_vehicles %}
+                                    <option value="{{ vehicle.id }}" {% if current_filters.vehicle == vehicle.id|stringformat:"s" %}selected{% endif %}>
+                                        🚗 {{ vehicle.license_plate }} ({{ vehicle.make }} {{ vehicle.model }})
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <div class="filter-group">
+                            <label for="date_from">Von Datum:</label>
+                            <input type="date" name="date_from" id="date_from" class="form-control" 
+                                   value="{{ current_filters.date_from|default:'' }}">
+                        </div>
+                        
+                        <div class="filter-group">
+                            <label for="date_to">Bis Datum:</label>
+                            <input type="date" name="date_to" id="date_to" class="form-control" 
+                                   value="{{ current_filters.date_to|default:'' }}">
+                        </div>
+                        
+                        <div class="filter-group filter-actions">
+                            <button type="submit" class="btn btn-primary btn-sm">
+                                🔍 Filtern
+                            </button>
+                            <a href="{% url 'accounts:time_entry_list' %}" class="btn btn-secondary btn-sm">
+                                🔄 Zurücksetzen
+                            </a>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
             {% if time_entries %}
                 <div class="summary-cards">
                     <div class="summary-card">
                         <h3>{{ time_entries|length }}</h3>
-                        <p>Einträge gesamt</p>
+                        <p>Einträge {% if current_filters.vehicle or current_filters.date_from or current_filters.date_to %}(gefiltert){% else %}gesamt{% endif %}</p>
+                    </div>
+                    <div class="summary-card vehicle-card">
+                        <h3>{{ vehicle_stats.with_vehicle }}</h3>
+                        <p>🚗 Mit Fahrzeug</p>
                     </div>
                     <div class="summary-card">
-                        <h3>{{ time_entries|length }}</h3>
-                        <p>Diesen Monat</p>
+                        <h3>{{ vehicle_stats.no_vehicle }}</h3>
+                        <p>🚶 Ohne Fahrzeug</p>
+                    </div>
+                    <div class="summary-card kilometers-card">
+                        <h3>{{ vehicle_stats.total_kilometers|floatformat:0 }}</h3>
+                        <p>🛣️ Kilometer gefahren</p>
                     </div>
                 </div>
 
@@ -245,6 +459,7 @@
                             <th>Pause</th>
                             <th>Arbeitszeit</th>
                             <th>Verschmutzung</th>
+                            <th>Fahrzeug</th>
                             <th>Aktionen</th>
                         </tr>
                     </thead>
@@ -260,6 +475,22 @@
                                     <span class="pollution-badge pollution-{{ entry.pollution_level }}">
                                         {{ entry.get_pollution_level_display }}
                                     </span>
+                                </td>
+                                <td>
+                                    {% if entry.vehicleusage %}
+                                        {% if entry.vehicleusage.no_vehicle_used %}
+                                            <span class="vehicle-badge no-vehicle">🚶 Kein Fahrzeug</span>
+                                        {% elif entry.vehicleusage.vehicle %}
+                                            <span class="vehicle-badge with-vehicle">
+                                                🚗 {{ entry.vehicleusage.vehicle.license_plate }}
+                                                <br><small>{{ entry.vehicleusage.daily_distance }}km</small>
+                                            </span>
+                                        {% else %}
+                                            <span class="vehicle-badge unknown">❓ Nicht angegeben</span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="vehicle-badge unknown">❓ Nicht angegeben</span>
+                                    {% endif %}
                                 </td>
                                 <td>
                                     <a href="{% url 'accounts:time_entry_edit' entry.id %}" 

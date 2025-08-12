@@ -6,7 +6,14 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.core.mail import send_mail
 
-from .models import EmployeeNonWorkingDay, PublicHoliday, TimeEntry, User
+from .models import (
+    EmployeeNonWorkingDay,
+    PublicHoliday,
+    TimeEntry,
+    User,
+    Vehicle,
+    VehicleUsage,
+)
 from .permissions import (
     can_export_time_entries,
     can_view_user_list,
@@ -41,7 +48,12 @@ class UserAdmin(BaseUserAdmin):
         (
             "Timelog Einstellungen",
             {
-                "fields": ("role", "is_invited", "first_login_token"),
+                "fields": (
+                    "role",
+                    "is_invited",
+                    "first_login_token",
+                    "default_vehicle",
+                ),
             },
         ),
     )
@@ -617,3 +629,326 @@ class EmployeeNonWorkingDayAdmin(admin.ModelAdmin):
 
         # Default: no access
         return queryset.none()
+
+
+@admin.register(Vehicle)
+class VehicleAdmin(admin.ModelAdmin):
+    """
+    Admin interface for Vehicle model.
+    Allows backoffice users to manage company fleet vehicles.
+    """
+
+    # Display configuration
+    list_display = (
+        "license_plate",
+        "make",
+        "model",
+        "year",
+        "color",
+        "fuel_type",
+        "is_active",
+        "created_at",
+    )
+
+    list_filter = (
+        "is_active",
+        "fuel_type",
+        "make",
+        "year",
+        "created_at",
+    )
+
+    search_fields = (
+        "license_plate",
+        "make",
+        "model",
+        "color",
+        "notes",
+    )
+
+    date_hierarchy = "created_at"
+    ordering = ("license_plate",)
+
+    # Form configuration
+    fieldsets = (
+        (
+            "Fahrzeug-Informationen",
+            {
+                "fields": (
+                    "license_plate",
+                    "make",
+                    "model",
+                    "year",
+                    "color",
+                    "fuel_type",
+                ),
+            },
+        ),
+        (
+            "Status",
+            {
+                "fields": ("is_active",),
+            },
+        ),
+        (
+            "Zusätzliche Informationen",
+            {
+                "fields": ("notes",),
+                "classes": ("collapse",),
+            },
+        ),
+    )
+
+    readonly_fields = ("created_at", "updated_at")
+
+    # Custom actions
+    actions = ["activate_vehicles", "deactivate_vehicles"]
+
+    def activate_vehicles(self, request, queryset):
+        """Activate selected vehicles."""
+        count = queryset.update(is_active=True)
+        self.message_user(
+            request,
+            f"{count} Fahrzeug(e) wurde(n) aktiviert.",
+            level="SUCCESS",
+        )
+
+    activate_vehicles.short_description = "Ausgewählte Fahrzeuge aktivieren"
+
+    def deactivate_vehicles(self, request, queryset):
+        """Deactivate selected vehicles."""
+        count = queryset.update(is_active=False)
+        self.message_user(
+            request,
+            f"{count} Fahrzeug(e) wurde(n) deaktiviert.",
+            level="SUCCESS",
+        )
+
+    deactivate_vehicles.short_description = "Ausgewählte Fahrzeuge deaktivieren"
+
+    def has_add_permission(self, request):
+        """Only backoffice users can add vehicles."""
+        return (
+            super().has_add_permission(request)
+            and request.user.is_authenticated
+            and request.user.is_backoffice
+        )
+
+    def has_change_permission(self, request, obj=None):
+        """Only backoffice users can change vehicles."""
+        return (
+            super().has_change_permission(request, obj)
+            and request.user.is_authenticated
+            and request.user.is_backoffice
+        )
+
+    def has_delete_permission(self, request, obj=None):
+        """Only backoffice users can delete vehicles."""
+        return (
+            super().has_delete_permission(request, obj)
+            and request.user.is_authenticated
+            and request.user.is_backoffice
+        )
+
+    def has_view_permission(self, request, obj=None):
+        """All authenticated users can view vehicles."""
+        return (
+            super().has_view_permission(request, obj) and request.user.is_authenticated
+        )
+
+
+@admin.register(VehicleUsage)
+class VehicleUsageAdmin(admin.ModelAdmin):
+    """
+    Admin interface for VehicleUsage model.
+    Primarily for reporting and monitoring vehicle usage patterns.
+    """
+
+    # Display configuration
+    list_display = (
+        "time_entry_display",
+        "vehicle",
+        "start_kilometers",
+        "end_kilometers",
+        "daily_distance",
+        "no_vehicle_used",
+        "created_at",
+    )
+
+    list_filter = (
+        "no_vehicle_used",
+        "time_entry__date",
+        "vehicle",
+        "time_entry__user",
+        "created_at",
+    )
+
+    search_fields = (
+        "time_entry__user__first_name",
+        "time_entry__user__last_name",
+        "vehicle__license_plate",
+        "vehicle__make",
+        "vehicle__model",
+        "notes",
+    )
+
+    date_hierarchy = "time_entry__date"
+    ordering = ("-time_entry__date",)
+
+    # Form configuration
+    fieldsets = (
+        (
+            "Verknüpfung",
+            {
+                "fields": ("time_entry",),
+            },
+        ),
+        (
+            "Fahrzeug-Nutzung",
+            {
+                "fields": (
+                    "vehicle",
+                    "no_vehicle_used",
+                    "start_kilometers",
+                    "end_kilometers",
+                ),
+            },
+        ),
+        (
+            "Zusätzliche Informationen",
+            {
+                "fields": ("notes",),
+                "classes": ("collapse",),
+            },
+        ),
+    )
+
+    readonly_fields = ("daily_distance", "created_at", "updated_at")
+
+    def time_entry_display(self, obj):
+        """Display time entry information."""
+        return f"{obj.time_entry.user.get_full_name()} - {obj.time_entry.date}"
+
+    time_entry_display.short_description = "Zeiteintrag"
+
+    def daily_distance(self, obj):
+        """Display calculated daily distance."""
+        distance = obj.daily_distance
+        if distance > 0:
+            return f"{distance} km"
+        return "-"
+
+    daily_distance.short_description = "Tageskilometer"
+
+    # Custom actions
+    actions = ["export_mileage_report"]
+
+    def export_mileage_report(self, request, queryset):
+        """Export vehicle usage data to CSV."""
+        import csv
+
+        from django.http import HttpResponse
+
+        response = HttpResponse(content_type="text/csv")
+        response["Content-Disposition"] = 'attachment; filename="fahrzeugnutzung.csv"'
+
+        writer = csv.writer(response)
+        writer.writerow(
+            [
+                "Datum",
+                "Mitarbeiter",
+                "Fahrzeug",
+                "Kennzeichen",
+                "Anfangs-km",
+                "End-km",
+                "Tageskilometer",
+                "Kein Fahrzeug",
+                "Notizen",
+            ]
+        )
+
+        for usage in queryset.select_related("time_entry__user", "vehicle"):
+            writer.writerow(
+                [
+                    usage.time_entry.date,
+                    usage.time_entry.user.get_full_name(),
+                    str(usage.vehicle) if usage.vehicle else "Kein Fahrzeug",
+                    usage.vehicle.license_plate if usage.vehicle else "-",
+                    usage.start_kilometers or "-",
+                    usage.end_kilometers or "-",
+                    usage.daily_distance or "-",
+                    "Ja" if usage.no_vehicle_used else "Nein",
+                    usage.notes or "",
+                ]
+            )
+
+        return response
+
+    export_mileage_report.short_description = "Fahrzeugnutzung als CSV exportieren"
+
+    def has_add_permission(self, request):
+        """VehicleUsage records are created automatically with TimeEntry."""
+        # Generally, these should be created through time entry forms
+        return (
+            super().has_add_permission(request)
+            and request.user.is_authenticated
+            and request.user.is_backoffice
+        )
+
+    def has_change_permission(self, request, obj=None):
+        """Allow backoffice to modify, restrict employees to their own records."""
+        if not super().has_change_permission(request, obj):
+            return False
+
+        if not request.user.is_authenticated:
+            return False
+
+        if request.user.is_backoffice:
+            return True
+
+        # Employees can edit their own vehicle usage records
+        if obj is not None:
+            return request.user.is_employee and obj.time_entry.user == request.user
+
+        return request.user.is_employee
+
+    def has_delete_permission(self, request, obj=None):
+        """Only backoffice can delete vehicle usage records."""
+        return (
+            super().has_delete_permission(request, obj)
+            and request.user.is_authenticated
+            and request.user.is_backoffice
+        )
+
+    def has_view_permission(self, request, obj=None):
+        """All authenticated users can view vehicle usage (with filtering)."""
+        return (
+            super().has_view_permission(request, obj) and request.user.is_authenticated
+        )
+
+    def get_queryset(self, request):
+        """Filter queryset based on user role."""
+        queryset = (
+            super().get_queryset(request).select_related("time_entry__user", "vehicle")
+        )
+
+        if request.user.is_superuser or request.user.is_backoffice:
+            return queryset
+
+        # Employees can only see their own vehicle usage records
+        if request.user.is_employee:
+            return queryset.filter(time_entry__user=request.user)
+
+        # Default: no access
+        return queryset.none()
+
+    def get_actions(self, request):
+        """Filter available actions based on user role."""
+        actions = super().get_actions(request)
+
+        # Only backoffice users can export mileage reports
+        if not request.user.is_backoffice:
+            if "export_mileage_report" in actions:
+                del actions["export_mileage_report"]
+
+        return actions

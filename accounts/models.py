@@ -26,6 +26,16 @@ class User(AbstractUser):
         max_length=64, blank=True, null=True, verbose_name="Erstanmeldung Token"
     )
 
+    # Vehicle assignment (will be populated after Vehicle model is created)
+    default_vehicle = models.ForeignKey(
+        "Vehicle",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="Standard-Fahrzeug",
+        help_text="Standard-Fahrzeug für diesen Mitarbeiter",
+    )
+
     class Meta:
         verbose_name = "Benutzer"
         verbose_name_plural = "Benutzer"
@@ -433,3 +443,231 @@ class EmployeeNonWorkingDay(models.Model):
             return check_date.day == self.day_of_month
 
         return False
+
+
+class Vehicle(models.Model):
+    """
+    Model representing company vehicles that can be used by employees.
+    Tracks vehicle information for fleet management and mileage tracking.
+    """
+
+    FUEL_CHOICES = [
+        ("petrol", "Benzin"),
+        ("diesel", "Diesel"),
+        ("electric", "Elektro"),
+        ("hybrid", "Hybrid"),
+        ("other", "Sonstiges"),
+    ]
+
+    license_plate = models.CharField(
+        max_length=20,
+        unique=True,
+        verbose_name="Kennzeichen",
+        help_text="Fahrzeugkennzeichen (eindeutig)",
+    )
+
+    make = models.CharField(
+        max_length=50,
+        verbose_name="Marke",
+        help_text="Fahrzeughersteller (z.B. 'Volkswagen', 'BMW')",
+    )
+
+    model = models.CharField(
+        max_length=50,
+        verbose_name="Modell",
+        help_text="Fahrzeugmodell (z.B. 'Golf', '3er')",
+    )
+
+    year = models.PositiveIntegerField(
+        verbose_name="Baujahr",
+        help_text="Baujahr des Fahrzeugs",
+    )
+
+    color = models.CharField(
+        max_length=30,
+        blank=True,
+        verbose_name="Farbe",
+        help_text="Fahrzeugfarbe (optional)",
+    )
+
+    fuel_type = models.CharField(
+        max_length=20,
+        choices=FUEL_CHOICES,
+        default="petrol",
+        verbose_name="Kraftstoffart",
+        help_text="Art des Kraftstoffs",
+    )
+
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name="Aktiv",
+        help_text="Ist das Fahrzeug derzeit verfügbar?",
+    )
+
+    notes = models.TextField(
+        blank=True,
+        verbose_name="Notizen",
+        help_text="Zusätzliche Informationen zum Fahrzeug",
+    )
+
+    # Audit fields
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Erstellt am",
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="Aktualisiert am",
+    )
+
+    class Meta:
+        verbose_name = "Fahrzeug"
+        verbose_name_plural = "Fahrzeuge"
+        ordering = ["license_plate"]
+
+    def __str__(self):
+        return f"{self.license_plate} ({self.make} {self.model})"
+
+    def clean(self):
+        """Validate vehicle data."""
+        super().clean()
+
+        if self.year and self.year < 1900:
+            raise ValidationError({"year": "Baujahr muss nach 1900 liegen."})
+
+        if self.year and self.year > timezone.now().year + 1:
+            raise ValidationError({"year": "Baujahr kann nicht in der Zukunft liegen."})
+
+        # Clean license plate - remove spaces and convert to uppercase
+        if self.license_plate:
+            self.license_plate = self.license_plate.replace(" ", "").upper()
+
+
+class VehicleUsage(models.Model):
+    """
+    Model representing vehicle usage linked to time entries.
+    Tracks mileage and vehicle selection for individual work days.
+    """
+
+    time_entry = models.OneToOneField(
+        TimeEntry,
+        on_delete=models.CASCADE,
+        verbose_name="Zeiteintrag",
+        help_text="Verknüpfter Zeiteintrag",
+    )
+
+    vehicle = models.ForeignKey(
+        Vehicle,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        verbose_name="Fahrzeug",
+        help_text="Verwendetes Fahrzeug (leer wenn kein Fahrzeug verwendet)",
+    )
+
+    start_kilometers = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Anfangs-km",
+        help_text="Kilometerstand zu Beginn der Arbeitszeit",
+    )
+
+    end_kilometers = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="End-km",
+        help_text="Kilometerstand am Ende der Arbeitszeit",
+    )
+
+    no_vehicle_used = models.BooleanField(
+        default=False,
+        verbose_name="Kein Fahrzeug verwendet",
+        help_text="Aktivieren wenn kein Fahrzeug verwendet wurde",
+    )
+
+    notes = models.TextField(
+        blank=True,
+        verbose_name="Notizen",
+        help_text="Zusätzliche Informationen zur Fahrzeugnutzung",
+    )
+
+    # Audit fields
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Erstellt am",
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="Aktualisiert am",
+    )
+
+    class Meta:
+        verbose_name = "Fahrzeugnutzung"
+        verbose_name_plural = "Fahrzeugnutzungen"
+        ordering = ["-time_entry__date"]
+
+    def __str__(self):
+        if self.no_vehicle_used:
+            return (
+                f"{self.time_entry.user.get_full_name()} - "
+                f"{self.time_entry.date} (Kein Fahrzeug)"
+            )
+        elif self.vehicle:
+            return (
+                f"{self.time_entry.user.get_full_name()} - "
+                f"{self.time_entry.date} ({self.vehicle.license_plate})"
+            )
+        else:
+            return (
+                f"{self.time_entry.user.get_full_name()} - " f"{self.time_entry.date}"
+            )
+
+    @property
+    def daily_distance(self):
+        """Calculate distance traveled in kilometers."""
+        if self.start_kilometers and self.end_kilometers and not self.no_vehicle_used:
+            return max(0, self.end_kilometers - self.start_kilometers)
+        return 0
+
+    def clean(self):
+        """Validate vehicle usage data."""
+        super().clean()
+
+        if not self.no_vehicle_used:
+            # If vehicle is used, require mileage data
+            if self.vehicle and (
+                self.start_kilometers is None or self.end_kilometers is None
+            ):
+                raise ValidationError(
+                    "Bei Fahrzeugnutzung müssen Anfangs- und "
+                    "End-Kilometer angegeben werden."
+                )
+
+            # Validate mileage logic
+            if (
+                self.start_kilometers is not None
+                and self.end_kilometers is not None
+                and self.end_kilometers < self.start_kilometers
+            ):
+                raise ValidationError(
+                    {
+                        "end_kilometers": (
+                            "End-Kilometer muss größer als " "Anfangs-Kilometer sein."
+                        )
+                    }
+                )
+
+            # Check for reasonable daily distance (warning for > 500km)
+            if self.daily_distance > 500:
+                raise ValidationError(
+                    f"Tägliche Fahrtstrecke von {self.daily_distance}km "
+                    f"erscheint ungewöhnlich hoch. Bitte prüfen Sie die Eingabe."
+                )
+
+        else:
+            # If no vehicle is used, clear vehicle-related fields
+            self.vehicle = None
+            self.start_kilometers = None
+            self.end_kilometers = None

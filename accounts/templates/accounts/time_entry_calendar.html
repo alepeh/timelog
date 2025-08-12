@@ -490,6 +490,9 @@
                                     {{ day.time_entry.start_time|time:"H:i" }} - {{ day.time_entry.end_time|time:"H:i" }}
                                     {% if day.time_entry.lunch_break_minutes %} ({{ day.time_entry.lunch_break_minutes }}min Pause){% endif %}
                                     • {{ day.time_entry.get_pollution_level_display }}
+                                    {% if day.vehicle_info %}
+                                        <br>{{ day.vehicle_info }}
+                                    {% endif %}
                                 </div>
                             {% elif day.is_weekend %}
                                 <div class="day-status status-weekend">🏖️ Wochenende</div>
